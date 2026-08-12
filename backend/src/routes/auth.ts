@@ -2,6 +2,7 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import jwt from "jsonwebtoken";
+import { requireAuth, AuthRequest } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -79,6 +80,26 @@ router.post("/login", async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ error: "Something went wrong during login." });
+  }
+});
+
+// GET /api/auth/me — returns the currently logged-in user's info.
+// requireAuth runs first: if the token is missing or invalid, this route never even runs.
+router.get("/me", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    // .select("-passwordHash") tells Mongoose "give me everything about this user
+    // except the password hash" — an extra safety layer so it's structurally
+    // impossible to accidentally leak it here
+    const user = await User.findById(req.userId).select("-passwordHash");
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error("Get profile error:", error);
+    res.status(500).json({ error: "Something went wrong." });
   }
 });
 
