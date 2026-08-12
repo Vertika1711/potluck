@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    // Compile down to modern JavaScript features (safe for current Node.js versions)
+    "target": "ES2022",
+
+    // Use the modern module system — matches "type": "module" in package.json
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    // Where compiled, ready-to-run JavaScript output goes (already in .gitignore)
+    "outDir": "./dist",
+
+    // Where your actual TypeScript source code lives
+    "rootDir": "./src",
+
+    // Turns on full type-checking — this is what makes TypeScript actually catch bugs
+    "strict": true,
+
+    // Lets modern "import" syntax work smoothly with older-style packages
+    "esModuleInterop": true,
+
+    // Skips type-checking inside installed packages (they're already tested by their authors)
+    "skipLibCheck": true,
+
+    // Prevents bugs from mismatched file name casing (e.g. "Server.ts" vs "server.ts")
+    "forceConsistentCasingInFileNames": true
+  },
+
+  // Only check/compile files inside the src folder
+  "include": ["src/**/*"]
+}
