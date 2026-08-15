@@ -2,12 +2,18 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import authRoutes from "./routes/auth.js";
+import cors from "cors";
 
 // Reads the .env file and loads its values into process.env,
 // so we can access things like MONGODB_URI in the code below
 dotenv.config();
 
 const app = express();
+
+// Allows the frontend (running on a different port) to make requests to this backend.
+// Without this, the browser blocks the requests before they even arrive here.
+app.use(cors());
+
 const PORT = 5000;
 
 // Pull the connection string out of the environment instead of hardcoding it here —
