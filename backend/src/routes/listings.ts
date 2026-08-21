@@ -1,6 +1,21 @@
 import { Router } from "express";
 import Listing from "../models/Listing.js";
 import { requireAuth, AuthRequest } from "../middleware/auth.js";
+import OpenAI from "openai";
+
+// Groq is OpenAI-compatible, so we use the OpenAI SDK but point it
+// at Groq's servers instead of OpenAI's, using our Groq key.
+
+// Creates the Groq client only when actually called (inside a route handler),
+// not at import time -- this avoids a startup crash where process.env
+// isn't populated yet because dotenv.config() hasn't run before this
+// file gets imported by server.ts.
+function getGroqClient() {
+  return new OpenAI({
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: "https://api.groq.com/openai/v1",
+  });
+}
 
 // Express router — same pattern as auth.ts. This groups all
 // listing-related routes together, then gets mounted onto the
@@ -41,6 +56,54 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
   } catch (error) {
     console.error("Create listing error:", error);
     res.status(500).json({ error: "Something went wrong creating the listing." });
+  }
+});
+
+// POST /api/listings/suggest-tags — takes free text and returns
+// AI-suggested skill tags. This does NOT create a listing -- it's a
+// separate step the frontend calls first, so the user can review/edit
+// suggestions before the real listing gets created.
+router.post("/suggest-tags", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { text } = req.body;
+
+    if (!text) {
+      return res.status(400).json({ error: "Text is required." });
+    }
+
+    const completion = await getGroqClient().chat.completions.create({
+      model: "openai/gpt-oss-120b",
+      messages: [
+        {
+          role: "system",
+          // This system prompt is doing the real work -- it tells the AI
+          // EXACTLY what format to respond in, so we can reliably parse it.
+          content:
+            "You extract skill tags from a user's goal or offer description. " +
+            "Respond with ONLY a JSON array of short, lowercase skill tag strings. " +
+            'Example: ["html", "css", "javascript", "web hosting"]. ' +
+            "No explanation, no markdown, just the raw JSON array.",
+        },
+        { role: "user", content: text },
+      ],
+      temperature: 0.3, // lower temperature = more consistent, less "creative" output
+    });
+
+    const raw = completion.choices[0].message.content || "[]";
+
+    // The AI might still wrap its answer in markdown code fences
+    // (```json ... ```) even when told not to -- this strips that off
+    // before we try to parse it as real JSON.
+    const cleaned = raw.replace(/```json|```/g, "").trim();
+    const tags = JSON.parse(cleaned);
+
+    res.status(200).json({ tags });
+  } catch (error) {
+    // If the Groq API fails, times out, or returns something we can't
+    // parse, we DON'T break the whole request -- we return an empty
+    // array so the frontend can fall back to manual tagging.
+    console.error("AI tag suggestion error:", error);
+    res.status(200).json({ tags: [], aiFailed: true });
   }
 });
 
