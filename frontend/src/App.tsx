@@ -5,6 +5,7 @@ import Profile from "./pages/Profile";
 import CreateListing from "./pages/CreateListing";
 import BrowseListings from "./pages/BrowseListings"
 import MyListings from "./pages/MyListings";
+import SwapRequests from "./pages/SwapRequests";
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
       <Route path="/create-listing" element={<CreateListing />} />
       <Route path="/browse-listings" element={<BrowseListings />} />
       <Route path="/my-listings" element={<MyListings />} />
+      <Route path="/swap-requests" element={<SwapRequests />} />
     </Routes>
   );
 }

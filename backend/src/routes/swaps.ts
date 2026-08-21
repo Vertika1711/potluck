@@ -44,6 +44,26 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+// GET /api/swaps/mine — returns all swaps where the logged-in user
+// is EITHER the requester or the receiver, split into two groups so
+// the frontend can show "Incoming" and "Outgoing" sections separately.
+router.get("/mine", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    // Incoming: swaps where I'm the receiver -- these are requests
+    // OTHER people sent me, about MY listings.
+    const incoming = await Swap.find({ receiverId: req.userId }).sort({ createdAt: -1 });
+
+    // Outgoing: swaps where I'm the requester -- these are requests
+    // I sent to OTHER people, about THEIR listings.
+    const outgoing = await Swap.find({ requesterId: req.userId }).sort({ createdAt: -1 });
+
+    res.status(200).json({ incoming, outgoing });
+  } catch (error) {
+    console.error("Fetch swaps error:", error);
+    res.status(500).json({ error: "Something went wrong fetching your swaps." });
+  }
+});
+
 // PUT /api/swaps/:id/respond — accept or reject a pending swap request.
 // Only the RECEIVER (the listing owner who got the request) can do this --
 // not the requester, and not some unrelated third user.
