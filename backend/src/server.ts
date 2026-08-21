@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import authRoutes from "./routes/auth.js";
 import cors from "cors";
+import listingRoutes from "./routes/listings.js";
 
 // Reads the .env file and loads its values into process.env,
 // so we can access things like MONGODB_URI in the code below
@@ -32,6 +33,8 @@ app.get("/", (req, res) => {
 // Every route inside auth.ts becomes reachable under /api/auth/...
 // so the signup route becomes: POST /api/auth/signup
 app.use("/api/auth", authRoutes);
+
+app.use("/api/listings", listingRoutes);
 
 async function startServer() {
   try {
