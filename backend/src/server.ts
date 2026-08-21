@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import authRoutes from "./routes/auth.js";
 import cors from "cors";
 import listingRoutes from "./routes/listings.js";
+import swapRoutes from "./routes/swaps.js";
 
 // Reads the .env file and loads its values into process.env,
 // so we can access things like MONGODB_URI in the code below
@@ -35,6 +36,8 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 
 app.use("/api/listings", listingRoutes);
+
+app.use("/api/swaps", swapRoutes);
 
 async function startServer() {
   try {
