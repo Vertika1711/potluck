@@ -2,6 +2,7 @@ import { Router } from "express";
 import Swap from "../models/Swap.js";
 import Listing from "../models/Listing.js";
 import { requireAuth, AuthRequest } from "../middleware/auth.js";
+import User from "../models/User.js";
 
 const router = Router();
 
@@ -195,6 +196,55 @@ router.put("/:id/cancel", requireAuth, async (req: AuthRequest, res) => {
   } catch (error) {
     console.error("Cancel swap error:", error);
     res.status(500).json({ error: "Something went wrong cancelling the swap." });
+  }
+});
+
+// GET /api/swaps/:id/contact
+// Returns the other swap participant's contact info — but only if:
+// - you're actually one of the two people in this swap (not a random user guessing IDs)
+// - the swap has been accepted (or completed) — contact info stays hidden while still pending
+router.get("/:id/contact", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const swap = await Swap.findById(req.params.id);
+
+    if (!swap) {
+      return res.status(404).json({ error: "Swap not found" });
+    }
+
+    // req.userId is a string (from the JWT), but requesterId/receiverId are
+    // Mongoose ObjectIds — .toString() makes sure we're comparing like-for-like
+    const isRequester = swap.requesterId.toString() === req.userId;
+    const isReceiver = swap.receiverId.toString() === req.userId;
+
+    if (!isRequester && !isReceiver) {
+      // Deliberately vague — same principle as the login error (see project-history.md):
+      // don't reveal whether the swap exists to someone who isn't part of it
+      return res.status(403).json({ error: "Not authorized to view this swap's contact info" });
+    }
+
+    if (swap.status !== "accepted" && swap.status !== "completed") {
+      return res.status(400).json({ error: "Contact info is only available after a swap is accepted" });
+    }
+
+    // Whichever side I'm on, "the other person" is the opposite field
+    const otherUserId = isRequester ? swap.receiverId : swap.requesterId;
+
+    const otherUser = await User.findById(otherUserId);
+    if (!otherUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Email is always shared once a swap is accepted — it's mandatory at signup.
+    // Phone is only included if the user has explicitly opted in via phoneVisible.
+    const contactInfo = {
+      name: otherUser.name,
+      email: otherUser.email,
+      phone: otherUser.phoneVisible ? otherUser.phone : undefined,
+    };
+
+    res.json(contactInfo);
+  } catch (err) {
+    res.status(500).json({ error: "Server error fetching contact info" });
   }
 });
 

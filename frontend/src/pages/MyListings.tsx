@@ -25,7 +25,11 @@ function MyListings() {
   // form doesn't affect the displayed list until you actually save.
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [editSkillTags, setEditSkillTags] = useState("");
+  // NEW: skillTags are now edited as a real array, not a comma-
+  // separated string -- editSkillTags holds the actual tags, and
+  // newTagInput holds whatever's currently typed into the "add a tag" box.
+  const [editSkillTags, setEditSkillTags] = useState<string[]>([]);
+  const [newTagInput, setNewTagInput] = useState("");
 
   const token = localStorage.getItem("token");
 
@@ -59,20 +63,33 @@ function MyListings() {
     setEditingId(listing._id);
     setEditTitle(listing.title);
     setEditDescription(listing.description);
-    setEditSkillTags(listing.skillTags.join(", "));
+    setEditSkillTags(listing.skillTags); // already an array -- no join needed now
+    setNewTagInput("");
   }
 
   function cancelEditing() {
     setEditingId(null);
   }
 
+  // NEW: adds whatever's in newTagInput to the editSkillTags array,
+  // trims whitespace, ignores empty input, and blocks exact duplicates.
+  function addTag() {
+    const trimmed = newTagInput.trim();
+    if (trimmed === "" || editSkillTags.includes(trimmed)) return;
+    setEditSkillTags((prev) => [...prev, trimmed]);
+    setNewTagInput("");
+  }
+
+  // NEW: removes one specific tag by value -- clicking a chip's "×".
+  function removeTag(tag: string) {
+    setEditSkillTags((prev) => prev.filter((t) => t !== tag));
+  }
+
   async function saveEdit(id: string) {
     try {
-      const tagsArray = editSkillTags.split(",").map((t) => t.trim()).filter(Boolean);
-
       const response = await axios.put(
         `http://localhost:5000/api/listings/${id}`,
-        { title: editTitle, description: editDescription, skillTags: tagsArray },
+        { title: editTitle, description: editDescription, skillTags: editSkillTags },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -138,7 +155,45 @@ function MyListings() {
             <div>
               <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
               <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
-              <input value={editSkillTags} onChange={(e) => setEditSkillTags(e.target.value)} />
+              <div style={{ margin: "8px 0" }}>
+                {editSkillTags.map((tag) => (
+                  <span
+                    key={tag}
+                    style={{
+                      display: "inline-block",
+                      background: "#eee",
+                      color: "#333",
+                      borderRadius: "12px",
+                      padding: "4px 10px",
+                      marginRight: "6px",
+                      marginBottom: "6px",
+                      fontSize: "14px",
+                    }}
+                  >
+                    {tag}{" "}
+                    <span
+                      onClick={() => removeTag(tag)}
+                      style={{ cursor: "pointer", fontWeight: "bold" }}
+                    >
+                      ×
+                    </span>
+                  </span>
+                ))}
+                <div>
+                  <input
+                    value={newTagInput}
+                    onChange={(e) => setNewTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault(); // stops Enter from submitting/reloading anything
+                        addTag();
+                      }
+                    }}
+                    placeholder="Type a skill and press Enter"
+                  />
+                  <button type="button" onClick={addTag}>Add</button>
+                </div>
+              </div>
               <button onClick={() => saveEdit(listing._id)}>Save</button>
               <button onClick={cancelEditing}>Cancel</button>
             </div>

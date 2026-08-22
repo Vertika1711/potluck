@@ -22,6 +22,13 @@ interface MyRating {
   swapId: string;
 }
 
+// NEW: shape of the contact info returned by GET /api/swaps/:id/contact
+interface ContactInfo {
+  name: string;
+  email: string;
+  phone?: string;
+}
+
 function SwapRequests() {
   const [incoming, setIncoming] = useState<Swap[]>([]);
   const [outgoing, setOutgoing] = useState<Swap[]>([]);
@@ -44,6 +51,15 @@ function SwapRequests() {
   const [ratingSwapId, setRatingSwapId] = useState<string | null>(null);
   const [ratingScore, setRatingScore] = useState(0);
   const [ratingComment, setRatingComment] = useState("");
+
+  // NEW: caches fetched contact info per swap _id, so clicking
+  // "Show Contact Info" twice doesn't re-fetch -- same caching idea
+  // as listingTitles, just built up on-demand instead of all at once.
+  const [contactInfo, setContactInfo] = useState<Record<string, ContactInfo>>({});
+
+  // NEW: tracks which swap's contact fetch is currently in flight,
+  // so we can show "Loading..." and avoid double-clicks firing two requests.
+  const [loadingContactId, setLoadingContactId] = useState<string | null>(null);
 
   const token = localStorage.getItem("token");
 
@@ -160,6 +176,29 @@ function SwapRequests() {
     }
   }
 
+  // NEW: fetches the other participant's contact info for a given swap,
+  // on demand -- only called when the user clicks "Show Contact Info",
+  // not automatically for every swap on page load (that would be a lot
+  // of unnecessary requests for swaps the user never looks at closely).
+  async function fetchContactInfo(swapId: string) {
+    setLoadingContactId(swapId);
+    try {
+      const response = await axios.get(
+        `http://localhost:5000/api/swaps/${swapId}/contact`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setContactInfo((prev) => ({ ...prev, [swapId]: response.data }));
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response) {
+        setError(err.response.data.error || "Failed to load contact info.");
+      } else {
+        setError("Something went wrong.");
+      }
+    } finally {
+      setLoadingContactId(null);
+    }
+  }
+
   // NEW: renders 5 clickable stars. Filled up to whatever the
   // currently selected score is, clicking a star sets the score to
   // that star's position (1-5).
@@ -207,6 +246,27 @@ function SwapRequests() {
             <button onClick={() => handleAction(swap._id, "complete")}>Mark Complete</button>
             <button onClick={() => handleAction(swap._id, "cancel")}>Cancel</button>
           </>
+        )}
+
+        {/* NEW: contact info -- available once accepted, stays visible after
+            completion too. Fetched on demand, cached in state once loaded. */}
+        {(swap.status === "accepted" || swap.status === "completed") && (
+          <div style={{ marginTop: "8px" }}>
+            {contactInfo[swap._id] ? (
+              <div>
+                <p><strong>Contact:</strong> {contactInfo[swap._id].name}</p>
+                <p>Email: {contactInfo[swap._id].email}</p>
+                {contactInfo[swap._id].phone && <p>Phone: {contactInfo[swap._id].phone}</p>}
+              </div>
+            ) : (
+              <button
+                onClick={() => fetchContactInfo(swap._id)}
+                disabled={loadingContactId === swap._id}
+              >
+                {loadingContactId === swap._id ? "Loading..." : "Show Contact Info"}
+              </button>
+            )}
+          </div>
         )}
 
         {/* NEW: rating section -- only for completed swaps, and only

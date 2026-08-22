@@ -10,6 +10,8 @@ export interface IUser extends Document {
   skillsWanted: string[];
   trustScore: number;
   createdAt: Date;
+  phone?: string;
+  phoneVisible: boolean;
 }
 
 // The actual schema — this is what Mongoose uses to validate
@@ -30,6 +32,15 @@ const UserSchema = new Schema<IUser>({
   trustScore: { type: Number, default: 0 },
 
   createdAt: { type: Date, default: Date.now },
+
+  phone: {
+    type: String,
+    required: false, // optional — not everyone wants to share a phone number
+  },
+  phoneVisible: {
+    type: Boolean,
+    default: false, // opt-in: contact route will only return phone if this is true
+  },
 });
 
 // Turns the schema into an actual usable model we can create/find/update users with

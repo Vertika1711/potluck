@@ -157,7 +157,12 @@ router.put("/:id/helpful", requireAuth, async (req: AuthRequest, res) => {
     }
 
     await rating.save();
-    res.status(200).json(rating);
+    // Populate raterId before responding, so the frontend always
+    // receives the same shape for a rating regardless of which route
+    // returned it -- otherwise a rating's rater name would vanish
+    // after toggling helpful, since findById here doesn't populate.
+    const populatedRating = await rating.populate("raterId", "name");
+    res.status(200).json(populatedRating);
   } catch (error) {
     console.error("Toggle helpful vote error:", error);
     res.status(500).json({ error: "Something went wrong updating this vote." });

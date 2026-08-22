@@ -8,6 +8,7 @@ import MyListings from "./pages/MyListings";
 import SwapRequests from "./pages/SwapRequests";
 import SuggestedMatches from "./pages/SuggestedMatches";
 import ListingDetail from "./pages/ListingDetail";
+import PublicProfile from "./pages/PublicProfile";
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
       <Route path="/swap-requests" element={<SwapRequests />} />
       <Route path="/suggested-matches" element={<SuggestedMatches />} />
       <Route path="/listing/:id" element={<ListingDetail />} />
+      <Route path="/profile/:userId" element={<PublicProfile />} />
     </Routes>
   );
 }
