@@ -30,6 +30,22 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: "You can't send a swap request on your own listing." });
     }
 
+    // Blocks sending a SECOND active request on a listing you already
+    // have a pending or accepted swap on -- doesn't make sense to
+    // request the same thing twice while an earlier request is still
+    // "live." Rejected/completed/cancelled swaps don't count here,
+    // since those are genuinely finished -- a new request afterward
+    // is a legitimate new attempt, not a duplicate.
+    const existingActiveSwap = await Swap.findOne({
+      listingId,
+      requesterId: req.userId,
+      status: { $in: ["pending", "accepted"] },
+    });
+
+    if (existingActiveSwap) {
+      return res.status(400).json({ error: "You already have an active request on this listing." });
+    }
+
     const swap = await Swap.create({
       listingId,
       requesterId: req.userId, // whoever is logged in and sending this request

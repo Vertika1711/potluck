@@ -105,6 +105,27 @@ function MyListings() {
     }
   }
 
+  // Toggles a listing between "active" and "closed" -- e.g. when the
+  // owner feels they've taught enough people, or wants to pause
+  // requests without deleting the listing entirely.
+  async function handleToggleStatus(listing: Listing) {
+    const newStatus = listing.status === "active" ? "closed" : "active";
+
+    try {
+      const response = await axios.put(
+        `http://localhost:5000/api/listings/${listing._id}`,
+        { status: newStatus },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setListings((prev) =>
+        prev.map((l) => (l._id === listing._id ? response.data : l))
+      );
+    } catch (err) {
+      setError("Failed to update listing status.");
+    }
+  }
+
   return (
     <div>
       <h2>My Listings</h2>
@@ -127,8 +148,12 @@ function MyListings() {
               <h3>{listing.title}</h3>
               <p>{listing.description}</p>
               <p><strong>Tags:</strong> {listing.skillTags.join(", ")}</p>
+              <p><strong>Status:</strong> {listing.status}</p>
               <button onClick={() => startEditing(listing)}>Edit</button>
               <button onClick={() => handleDelete(listing._id)}>Delete</button>
+              <button onClick={() => handleToggleStatus(listing)}>
+                {listing.status === "active" ? "Close Listing" : "Reopen Listing"}
+              </button>
             </div>
           )}
         </div>

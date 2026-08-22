@@ -124,6 +124,27 @@ router.get("/", async (req, res) => {
   }
 });
 
+// GET /api/listings/:id — fetch one specific listing, including the
+// owner's name (via .populate) so the frontend can show "posted by X"
+// without a second separate request. Public, same as the browse route.
+router.get("/:id", async (req, res) => {
+  try {
+    // .populate("userId", "name") replaces the raw userId ObjectId
+    // with { _id, name } -- only the name field, nothing else from
+    // the User document (no email, no password hash) gets exposed.
+    const listing = await Listing.findById(req.params.id).populate("userId", "name");
+
+    if (!listing) {
+      return res.status(404).json({ error: "Listing not found." });
+    }
+
+    res.status(200).json(listing);
+  } catch (error) {
+    console.error("Fetch single listing error:", error);
+    res.status(500).json({ error: "Something went wrong fetching this listing." });
+  }
+});
+
 // PUT /api/listings/:id — edit an existing listing.
 // requireAuth confirms someone is logged in, but we ALSO need to check
 // that the logged-in user actually OWNS this listing — otherwise any

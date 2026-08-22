@@ -5,6 +5,7 @@ import authRoutes from "./routes/auth.js";
 import cors from "cors";
 import listingRoutes from "./routes/listings.js";
 import swapRoutes from "./routes/swaps.js";
+import matchingRoutes from "./routes/matching.js";
 
 // Reads the .env file and loads its values into process.env,
 // so we can access things like MONGODB_URI in the code below
@@ -34,10 +35,9 @@ app.get("/", (req, res) => {
 // Every route inside auth.ts becomes reachable under /api/auth/...
 // so the signup route becomes: POST /api/auth/signup
 app.use("/api/auth", authRoutes);
-
 app.use("/api/listings", listingRoutes);
-
 app.use("/api/swaps", swapRoutes);
+app.use("/api/matches", matchingRoutes);
 
 async function startServer() {
   try {
