@@ -16,6 +16,12 @@ interface Listing {
   title: string;
 }
 
+// NEW: shape of one rating the logged-in user has already given --
+// only need swapId here, just to build the "already rated" lookup.
+interface MyRating {
+  swapId: string;
+}
+
 function SwapRequests() {
   const [incoming, setIncoming] = useState<Swap[]>([]);
   const [outgoing, setOutgoing] = useState<Swap[]>([]);
@@ -26,6 +32,18 @@ function SwapRequests() {
   // after fetching the swaps, since we only know which listings we
   // actually need titles for once we have the swap list in hand.
   const [listingTitles, setListingTitles] = useState<Record<string, string>>({});
+
+  // NEW: which swap _ids the logged-in user has ALREADY rated --
+  // fetched upfront on page load, so "Rate this exchange" is
+  // correctly hidden from the very first render, not just after a
+  // same-session submission (a refresh shouldn't bring the button back).
+  const [ratedSwapIds, setRatedSwapIds] = useState<Set<string>>(new Set());
+
+  // NEW: tracks which swap's rating form is currently open, same
+  // single-open-form pattern as MyListings.tsx's editingId.
+  const [ratingSwapId, setRatingSwapId] = useState<string | null>(null);
+  const [ratingScore, setRatingScore] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
 
   const token = localStorage.getItem("token");
 
@@ -53,6 +71,16 @@ function SwapRequests() {
           }
         });
         setListingTitles(titleMap);
+
+        // NEW: fetch which swaps this user has already rated, so the
+        // rating button correctly stays hidden across page reloads.
+        const myRatingsRes = await axios.get("http://localhost:5000/api/ratings/mine", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const ratedIds = new Set<string>(
+          myRatingsRes.data.map((r: MyRating) => r.swapId)
+        );
+        setRatedSwapIds(ratedIds);
       } catch (err) {
         setError("Failed to load your swap requests.");
       }
@@ -90,6 +118,67 @@ function SwapRequests() {
     }
   }
 
+  // NEW: opens the rating form for a specific swap, resetting any
+  // leftover values from a previous rating attempt.
+  function startRating(swapId: string) {
+    setRatingSwapId(swapId);
+    setRatingScore(0);
+    setRatingComment("");
+  }
+
+  function cancelRating() {
+    setRatingSwapId(null);
+  }
+
+  // NEW: submits the rating. Note we only send swapId, score, and
+  // comment -- the backend derives WHO is being rated automatically
+  // from the swap record itself, so the frontend never needs to
+  // figure that out or send it.
+  async function submitRating(swapId: string) {
+    if (ratingScore === 0) {
+      setError("Please select a star rating before submitting.");
+      return;
+    }
+
+    try {
+      await axios.post(
+        "http://localhost:5000/api/ratings",
+        { swapId, score: ratingScore, comment: ratingComment || undefined },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      // Mark this swap as rated so the button disappears immediately,
+      // and close the form.
+      setRatedSwapIds((prev) => new Set(prev).add(swapId));
+      setRatingSwapId(null);
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response) {
+        setError(err.response.data.error || "Failed to submit rating.");
+      } else {
+        setError("Something went wrong.");
+      }
+    }
+  }
+
+  // NEW: renders 5 clickable stars. Filled up to whatever the
+  // currently selected score is, clicking a star sets the score to
+  // that star's position (1-5).
+  function renderStarInput() {
+    return [1, 2, 3, 4, 5].map((n) => (
+      <span
+        key={n}
+        onClick={() => setRatingScore(n)}
+        style={{
+          cursor: "pointer",
+          fontSize: "24px",
+          color: n <= ratingScore ? "#ffb400" : "#ccc",
+        }}
+      >
+        ★
+      </span>
+    ));
+  }
+
   // Renders one swap card, with whatever action buttons make sense
   // for its current status and whether the viewer is the receiver
   // (can accept/reject a pending one) or a participant in general
@@ -118,6 +207,34 @@ function SwapRequests() {
             <button onClick={() => handleAction(swap._id, "complete")}>Mark Complete</button>
             <button onClick={() => handleAction(swap._id, "cancel")}>Cancel</button>
           </>
+        )}
+
+        {/* NEW: rating section -- only for completed swaps, and only
+            if this user hasn't already rated this one. */}
+        {swap.status === "completed" && !ratedSwapIds.has(swap._id) && (
+          <div style={{ marginTop: "8px" }}>
+            {ratingSwapId === swap._id ? (
+              // Rating form is open for THIS swap
+              <div>
+                <div>{renderStarInput()}</div>
+                <textarea
+                  placeholder="Optional comment..."
+                  value={ratingComment}
+                  onChange={(e) => setRatingComment(e.target.value)}
+                />
+                <button onClick={() => submitRating(swap._id)}>Submit Rating</button>
+                <button onClick={cancelRating}>Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => startRating(swap._id)}>Rate this exchange</button>
+            )}
+          </div>
+        )}
+
+        {/* NEW: simple confirmation once rated, so the card doesn't
+            just go silent after a completed swap. */}
+        {swap.status === "completed" && ratedSwapIds.has(swap._id) && (
+          <p style={{ marginTop: "8px", fontStyle: "italic" }}>You've rated this exchange.</p>
         )}
       </div>
     );

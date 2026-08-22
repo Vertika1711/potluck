@@ -6,6 +6,7 @@ import cors from "cors";
 import listingRoutes from "./routes/listings.js";
 import swapRoutes from "./routes/swaps.js";
 import matchingRoutes from "./routes/matching.js";
+import ratingRoutes from "./routes/ratings.js";
 
 // Reads the .env file and loads its values into process.env,
 // so we can access things like MONGODB_URI in the code below
@@ -38,6 +39,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/listings", listingRoutes);
 app.use("/api/swaps", swapRoutes);
 app.use("/api/matches", matchingRoutes);
+app.use("/api/ratings", ratingRoutes);
 
 async function startServer() {
   try {
