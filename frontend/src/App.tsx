@@ -13,6 +13,7 @@ import ListingDetail from "./pages/ListingDetail";
 import PublicProfile from "./pages/PublicProfile";
 import MyReviews from "./pages/MyReviews";
 import Dashboard from "./pages/Dashboard";
+import Home from "./pages/Home";
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
       <Route path="/profile/:userId" element={<PublicProfile />} />
       <Route path="/my-reviews" element={<MyReviews />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/" element={<Home />} />
     </Routes>
   );
 }
