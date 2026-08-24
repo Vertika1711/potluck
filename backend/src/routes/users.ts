@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import Listing from "../models/Listing.js";
 import Swap from "../models/Swap.js";
 import { requireAuth, AuthRequest } from "../middleware/auth.js";
+import bcrypt from "bcryptjs";
 
 const router = Router();
 
@@ -92,6 +93,67 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
   } catch (error) {
     console.error("Update profile error:", error);
     res.status(500).json({ error: "Something went wrong updating your profile." });
+  }
+});
+
+// DELETE /api/users/me — permanently deletes the logged-in user's
+// account. Requires re-entering the current password first, since
+// this is irreversible.
+//
+// What happens to related data:
+// - Any of my PENDING or ACCEPTED swaps get CANCELLED (not deleted) --
+//   this keeps the swap visible in the other participant's history,
+//   rather than silently vanishing or leaving them stuck with a
+//   request that can never be responded to.
+// - My own listings are deleted entirely.
+// - COMPLETED/REJECTED/CANCELLED swaps and ALL ratings (given or
+//   received) are left completely untouched -- this is deliberate:
+//   someone else's swap/review history shouldn't disappear just
+//   because I later delete my account. Their view of that history is
+//   preserved permanently; only my ability to log in and manage my
+//   own data goes away.
+router.delete("/me", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({ error: "Password is required to delete your account." });
+    }
+
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!isMatch) {
+      return res.status(401).json({ error: "Incorrect password." });
+    }
+
+    // Cancel any swaps still awaiting action, in EITHER direction --
+    // otherwise the other participant would be left with a request
+    // that can never be accepted/rejected/completed.
+    await Swap.updateMany(
+      {
+        $or: [{ requesterId: user._id }, { receiverId: user._id }],
+        status: { $in: ["pending", "accepted"] },
+      },
+      { status: "cancelled" }
+    );
+
+    // Delete all of my own listings.
+    await Listing.deleteMany({ userId: user._id });
+
+    // Finally, delete the account itself. Everything else (completed
+    // swaps, ratings) stays in place, referencing a user that no
+    // longer exists -- the frontend handles this gracefully by
+    // showing "Deleted User" wherever that name would have appeared.
+    await User.findByIdAndDelete(user._id);
+
+    res.status(200).json({ message: "Your account has been permanently deleted." });
+  } catch (error) {
+    console.error("Delete account error:", error);
+    res.status(500).json({ error: "Something went wrong deleting your account." });
   }
 });
 

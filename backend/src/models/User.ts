@@ -12,6 +12,8 @@ export interface IUser extends Document {
   createdAt: Date;
   phone?: string;
   phoneVisible: boolean;
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
 }
 
 // The actual schema — this is what Mongoose uses to validate
@@ -40,6 +42,14 @@ const UserSchema = new Schema<IUser>({
   phoneVisible: {
     type: Boolean,
     default: false, // opt-in: contact route will only return phone if this is true
+  },
+  resetPasswordToken: {
+    type: String,
+    required: false, // only set while a reset request is actively pending
+  },
+  resetPasswordExpires: {
+    type: Date,
+    required: false, // set alongside the token, cleared once used or expired
   },
 });
 

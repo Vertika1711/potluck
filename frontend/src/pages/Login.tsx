@@ -71,6 +71,10 @@ function Login() {
       <p style={{ marginTop: "16px" }}>
         Don't have an account? <Link to="/signup">Sign up</Link>
       </p>
+
+      <p style={{ marginTop: "8px" }}>
+        <Link to="/forgot-password">Forgot your password?</Link>
+      </p>
     </div>
   );
 }

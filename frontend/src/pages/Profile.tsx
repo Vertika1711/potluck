@@ -18,7 +18,7 @@ interface User {
 // uses, just fetched for my own id instead of someone else's.
 interface Rating {
   _id: string;
-  raterId: { _id: string; name: string };
+  raterId: { _id: string; name: string } | null;
   score: number;
   comment?: string;
   createdAt: string;
@@ -45,6 +45,10 @@ function Profile() {
   const [newWantedInput, setNewWantedInput] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editPhoneVisible, setEditPhoneVisible] = useState(false);
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
 
   const token = localStorage.getItem("token");
 
@@ -163,6 +167,33 @@ function Profile() {
   function handleLogout() {
     localStorage.removeItem("token");
     navigate("/login");
+  }
+
+  async function handleDeleteAccount() {
+    setDeleteError("");
+
+    if (!deletePassword) {
+      setDeleteError("Please enter your password to confirm.");
+      return;
+    }
+
+    try {
+      await axios.delete("http://localhost:5000/api/users/me", {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { password: deletePassword }, // DELETE requests send a body via "data", not a second argument like POST/PUT
+      });
+
+      // Account is gone -- clear the token and send them off, same as
+      // a logout, but there's genuinely nothing to log back into now.
+      localStorage.removeItem("token");
+      navigate("/signup");
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response) {
+        setDeleteError(err.response.data.error || "Failed to delete account.");
+      } else {
+        setDeleteError("Something went wrong.");
+      }
+    }
   }
 
   // NEW: renders a chip-editable skill list -- shared by both the
@@ -290,7 +321,7 @@ function Profile() {
         {ratings.length === 0 && <p>No reviews yet.</p>}
         {ratings.map((rating) => (
           <div key={rating._id}>
-            <p><strong>{rating.raterId.name}</strong> — {"★".repeat(rating.score)}{"☆".repeat(5 - rating.score)}</p>
+            <p><strong>{rating.raterId?.name || "Deleted User"}</strong> — {"★".repeat(rating.score)}{"☆".repeat(5 - rating.score)}</p>
             {rating.comment && <p>{rating.comment}</p>}
             <p style={{ fontSize: "12px", color: "gray" }}>{new Date(rating.createdAt).toLocaleDateString()}</p>
           </div>
@@ -301,6 +332,35 @@ function Profile() {
       <button onClick={handleLogout} style={{ padding: "8px 16px", marginTop: "24px" }}>
         Log Out
       </button>
+      <div style={{ marginTop: "32px", borderTop: "1px solid gray", paddingTop: "16px" }}>
+        {!showDeleteConfirm ? (
+          <button onClick={() => setShowDeleteConfirm(true)} style={{ color: "red" }}>
+            Delete Account
+          </button>
+        ) : (
+          <div>
+            <p style={{ color: "red" }}>
+              This will permanently delete your account. Any pending or accepted
+              swaps will be cancelled. This cannot be undone.
+            </p>
+            <input
+              type="password"
+              placeholder="Enter your password to confirm"
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+            />
+            <div style={{ marginTop: "8px" }}>
+              <button onClick={handleDeleteAccount} style={{ color: "red" }}>
+                Yes, Delete My Account
+              </button>
+              <button onClick={() => { setShowDeleteConfirm(false); setDeletePassword(""); setDeleteError(""); }}>
+                Cancel
+              </button>
+            </div>
+            {deleteError && <p style={{ color: "red" }}>{deleteError}</p>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

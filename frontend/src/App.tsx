@@ -1,5 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 import Signup from "./pages/Signup";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import CreateListing from "./pages/CreateListing";
@@ -17,6 +19,8 @@ function App() {
     <Routes>
       {/* Each Route maps a URL path to a page component */}
       <Route path="/signup" element={<Signup />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password/:token" element={<ResetPassword />} />
       <Route path="/login" element={<Login />} />
       <Route path="/profile" element={<Profile />} />
       <Route path="/create-listing" element={<CreateListing />} />

@@ -20,7 +20,7 @@ interface Listing {
 
 interface Rating {
   _id: string;
-  raterId: { _id: string; name: string };
+  raterId: { _id: string; name: string } | null;
   score: number;
   comment?: string;
   createdAt: string;
@@ -145,7 +145,7 @@ function PublicProfile() {
 
         return (
           <div key={rating._id} style={{ border: "1px solid gray", padding: "10px", marginBottom: "8px" }}>
-            <p><strong>{rating.raterId.name}</strong> — {"★".repeat(rating.score)}{"☆".repeat(5 - rating.score)}</p>
+            <p><strong>{rating.raterId?.name || "Deleted User"}</strong> — {"★".repeat(rating.score)}{"☆".repeat(5 - rating.score)}</p>
             {rating.comment && <p>{rating.comment}</p>}
             <p style={{ fontSize: "12px", color: "gray" }}>
               {new Date(rating.createdAt).toLocaleDateString()}
