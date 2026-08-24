@@ -126,4 +126,100 @@ router.get("/search", async (req, res) => {
   }
 });
 
+// GET /api/users/me/stats
+// Aggregation endpoint for the Personal Dashboard -- computes swap
+// status breakdown, taught-vs-learned counts, and month-by-month
+// completed-swap data for the activity chart. Everything is computed
+// live here rather than cached, since this is a low-traffic route
+// (visited far less often than, say, a profile view) -- unlike
+// trustScore, which IS cached because profiles are viewed constantly.
+router.get("/me/stats", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const myId = req.userId;
+    const user = await User.findById(myId).select("name createdAt");
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    // Every swap I've ever been part of, either side.
+    const allMySwaps = await Swap.find({
+      $or: [{ requesterId: myId }, { receiverId: myId }],
+    });
+
+    // Status breakdown -- counts across BOTH directions, per status.
+    const pendingCount = allMySwaps.filter((s) => s.status === "pending").length;
+    const acceptedCount = allMySwaps.filter((s) => s.status === "accepted").length;
+    const rejectedCount = allMySwaps.filter((s) => s.status === "rejected").length;
+    const cancelledCount = allMySwaps.filter((s) => s.status === "cancelled").length;
+    const completedCount = allMySwaps.filter((s) => s.status === "completed").length;
+
+    // "Requested" is a DIFFERENT slice -- specifically swaps where I was
+    // the one who sent the request, regardless of what happened to it.
+    // Not a status value itself, so counted separately from the block above.
+    const requestedCount = allMySwaps.filter(
+      (s) => s.requesterId.toString() === myId
+    ).length;
+
+    // Taught vs. learned -- only meaningful for COMPLETED swaps, and
+    // needs each swap's listing type, so we populate listingId here.
+    const completedSwaps = await Swap.find({
+      $or: [{ requesterId: myId }, { receiverId: myId }],
+      status: "completed",
+    }).populate("listingId", "type");
+
+    let taughtCount = 0;
+    let learnedCount = 0;
+
+    for (const swap of completedSwaps) {
+      const listing = swap.listingId as any; // populated -- has a "type" field
+      const isRequester = swap.requesterId.toString() === myId;
+
+      // offer + I'm the receiver (it's MY listing, I'm providing the
+      // skill) = I taught. offer + I'm the requester (someone else's
+      // listing, I'm the one reaching out for it) = I learned.
+      // want is the mirror image of this.
+      if (listing.type === "offer") {
+        if (isRequester) learnedCount++;
+        else taughtCount++;
+      } else {
+        // type === "want"
+        if (isRequester) taughtCount++;
+        else learnedCount++;
+      }
+    }
+
+    // Swaps-over-time -- group completed swaps by month (YYYY-MM), for
+    // the activity chart. Only completed swaps have a completedAt date.
+    const swapsByMonth: Record<string, number> = {};
+    for (const swap of completedSwaps) {
+      if (!swap.completedAt) continue; // shouldn't happen for a completed swap, but a safe guard
+      const monthKey = swap.completedAt.toISOString().slice(0, 7); // "2026-08"
+      swapsByMonth[monthKey] = (swapsByMonth[monthKey] || 0) + 1;
+    }
+
+    // Convert to a sorted array -- easier for Recharts to consume than
+    // an object, and sorted so the chart reads chronologically.
+    const swapsOverTime = Object.entries(swapsByMonth)
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    res.status(200).json({
+      name: user.name,
+      joinedAt: user.createdAt,
+      completedCount,
+      requestedCount,
+      pendingCount,
+      acceptedCount,
+      rejectedCount,
+      cancelledCount,
+      taughtCount,
+      learnedCount,
+      swapsOverTime,
+    });
+  } catch (error) {
+    console.error("Fetch dashboard stats error:", error);
+    res.status(500).json({ error: "Something went wrong fetching your stats." });
+  }
+});
+
 export default router;

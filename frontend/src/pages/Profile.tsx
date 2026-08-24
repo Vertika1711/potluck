@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 
 // Describes the shape of the user data we expect back from the backend
@@ -26,8 +26,8 @@ interface Rating {
 
 function Profile() {
   const [user, setUser] = useState<User | null>(null);
-  // NEW: my own reviews, and my completed-swap count -- both new
-  // additions to what this page used to show.
+  // NEW: my own most-recent review (a PREVIEW only, full list lives on
+  // /my-reviews now), and my completed-swap count for the Dashboard preview.
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [completedSwapCount, setCompletedSwapCount] = useState(0);
   const [error, setError] = useState("");
@@ -69,21 +69,23 @@ function Profile() {
 
         setUser(response.data);
 
-        // NEW: reuse GET /api/users/:id/profile just for
-        // completedSwapCount -- /api/auth/me doesn't compute that
-        // itself, and rather than duplicate the counting logic on the
-        // frontend, we call the route that already does it server-side.
-        const profileRes = await axios.get(
-          `http://localhost:5000/api/users/${response.data._id}/profile`
-        );
-        setCompletedSwapCount(profileRes.data.completedSwapCount);
+        // NEW: switched from the old /api/users/:id/profile call to the
+        // new /api/users/me/stats route -- simpler (no id needed, since
+        // it derives "me" from the JWT), and it's the same route the
+        // full Dashboard page will use, so this preview and that full
+        // page always agree on the numbers.
+        const statsRes = await axios.get("http://localhost:5000/api/users/me/stats", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setCompletedSwapCount(statsRes.data.completedCount);
 
-        // NEW: my own ratings -- same route PublicProfile.tsx uses,
-        // just pointed at my own id instead of someone else's.
+        // NEW: my own MOST RECENT review only (limit=1) -- this is just
+        // a preview; the full list with pagination/filtering now lives
+        // on the dedicated /my-reviews page.
         const ratingsRes = await axios.get(
-          `http://localhost:5000/api/ratings/user/${response.data._id}`
+          `http://localhost:5000/api/ratings/user/${response.data._id}?limit=1`
         );
-        setRatings(ratingsRes.data);
+        setRatings(ratingsRes.data.ratings);
       } catch (err) {
         // If the token is invalid or expired, the backend returns 401 —
         // in that case, clear the bad token and send the user to log in again
@@ -257,13 +259,12 @@ function Profile() {
           </div>
         </div>
       ) : (
-        // NORMAL VIEW MODE -- same layout you had before, plus the
-        // new completedSwapCount, phone, and an Edit button.
+        // NORMAL VIEW MODE -- Trust Score and Completed Swaps REMOVED
+        // from here, since they now live in the Dashboard preview
+        // below, avoiding showing the same numbers twice on one page.
         <div>
           <p><strong>Name:</strong> {user.name}</p>
           <p><strong>Email:</strong> {user.email}</p>
-          <p><strong>Trust Score:</strong> {user.trustScore}</p>
-          <p><strong>Completed Swaps:</strong> {completedSwapCount}</p>
           <p><strong>Skills Offered:</strong> {user.skillsOffered.length > 0 ? user.skillsOffered.join(", ") : "None yet"}</p>
           <p><strong>Skills Wanted:</strong> {user.skillsWanted.length > 0 ? user.skillsWanted.join(", ") : "None yet"}</p>
           <p><strong>Phone:</strong> {user.phone ? `${user.phone} (${user.phoneVisible ? "visible to swap partners" : "hidden"})` : "Not set"}</p>
@@ -272,19 +273,30 @@ function Profile() {
         </div>
       )}
 
-      {/* NEW: my own reviews -- read-only, no helpful button, since
-          you can't mark your own reviews as helpful (blocked
-          server-side anyway, so it's simply never shown here rather
-          than shown-then-blocked). */}
-      <h3 style={{ marginTop: "24px" }}>My Reviews</h3>
-      {ratings.length === 0 && <p>No reviews yet.</p>}
-      {ratings.map((rating) => (
-        <div key={rating._id} style={{ border: "1px solid gray", padding: "10px", marginBottom: "8px" }}>
-          <p><strong>{rating.raterId.name}</strong> — {"★".repeat(rating.score)}{"☆".repeat(5 - rating.score)}</p>
-          {rating.comment && <p>{rating.comment}</p>}
-          <p style={{ fontSize: "12px", color: "gray" }}>{new Date(rating.createdAt).toLocaleDateString()}</p>
-        </div>
-      ))}
+      {/* NEW: Dashboard preview -- just Trust Score and Completed Swaps,
+          with a link to the full /dashboard page for everything else
+          (status breakdown, taught/learned, charts). */}
+      <div style={{ border: "1px solid gray", padding: "12px", marginTop: "24px" }}>
+        <h3 style={{ marginTop: 0 }}>Dashboard</h3>
+        <p><strong>Trust Score:</strong> {user.trustScore}</p>
+        <p><strong>Completed Swaps:</strong> {completedSwapCount}</p>
+        <Link to="/dashboard">View Full Dashboard →</Link>
+      </div>
+
+      {/* NEW: Reviews preview -- just the most recent review, with a
+          link to the full paginated /my-reviews page. */}
+      <div style={{ border: "1px solid gray", padding: "12px", marginTop: "16px" }}>
+        <h3 style={{ marginTop: 0 }}>Reviews</h3>
+        {ratings.length === 0 && <p>No reviews yet.</p>}
+        {ratings.map((rating) => (
+          <div key={rating._id}>
+            <p><strong>{rating.raterId.name}</strong> — {"★".repeat(rating.score)}{"☆".repeat(5 - rating.score)}</p>
+            {rating.comment && <p>{rating.comment}</p>}
+            <p style={{ fontSize: "12px", color: "gray" }}>{new Date(rating.createdAt).toLocaleDateString()}</p>
+          </div>
+        ))}
+        <Link to="/my-reviews">See All Reviews →</Link>
+      </div>
 
       <button onClick={handleLogout} style={{ padding: "8px 16px", marginTop: "24px" }}>
         Log Out

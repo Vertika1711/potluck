@@ -9,6 +9,8 @@ import SwapRequests from "./pages/SwapRequests";
 import SuggestedMatches from "./pages/SuggestedMatches";
 import ListingDetail from "./pages/ListingDetail";
 import PublicProfile from "./pages/PublicProfile";
+import MyReviews from "./pages/MyReviews";
+import Dashboard from "./pages/Dashboard";
 
 function App() {
   return (
@@ -24,6 +26,8 @@ function App() {
       <Route path="/suggested-matches" element={<SuggestedMatches />} />
       <Route path="/listing/:id" element={<ListingDetail />} />
       <Route path="/profile/:userId" element={<PublicProfile />} />
+      <Route path="/my-reviews" element={<MyReviews />} />
+      <Route path="/dashboard" element={<Dashboard />} />
     </Routes>
   );
 }

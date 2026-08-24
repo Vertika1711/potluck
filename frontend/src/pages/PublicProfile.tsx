@@ -34,6 +34,8 @@ function PublicProfile() {
   const [profile, setProfile] = useState<PublicProfileData | null>(null);
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [sort, setSort] = useState<"recent" | "helpful">("recent");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [myId, setMyId] = useState<string | null>(null); // needed to check "have I voted"
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -64,11 +66,12 @@ function PublicProfile() {
         );
         setProfile(profileRes.data);
 
-        // Step 3: fetch this user's ratings, respecting current sort
+        // Step 3: fetch this user's ratings, respecting current sort and page
         const ratingsRes = await axios.get(
-          `http://localhost:5000/api/ratings/user/${userId}?sort=${sort}`
+          `http://localhost:5000/api/ratings/user/${userId}?sort=${sort}&page=${page}`
         );
-        setRatings(ratingsRes.data);
+        setRatings(ratingsRes.data.ratings);
+        setTotalPages(ratingsRes.data.totalPages);
       } catch (err) {
         setError("Failed to load this profile.");
       } finally {
@@ -79,7 +82,7 @@ function PublicProfile() {
     loadEverything();
     // Re-runs if the sort toggle changes, so switching "Most Recent"
     // <-> "Most Helpful" re-fetches with the new order.
-  }, [userId, token, navigate, sort]);
+  }, [userId, token, navigate, sort, page]);
 
   // Toggles this rating's helpful vote, then updates just that one
   // rating in state using the server's response -- same "update in
@@ -126,10 +129,10 @@ function PublicProfile() {
 
       <h3>Reviews</h3>
       <div style={{ marginBottom: "10px" }}>
-        <button onClick={() => setSort("recent")} disabled={sort === "recent"}>
+        <button onClick={() => { setSort("recent"); setPage(1); }} disabled={sort === "recent"}>
           Most Recent
         </button>
-        <button onClick={() => setSort("helpful")} disabled={sort === "helpful"}>
+        <button onClick={() => { setSort("helpful"); setPage(1); }} disabled={sort === "helpful"}>
           Most Helpful
         </button>
       </div>
@@ -161,6 +164,22 @@ function PublicProfile() {
           </div>
         );
       })}
+      {totalPages > 1 && (
+        <div style={{ marginTop: "16px" }}>
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+            Prev
+          </button>
+          <span style={{ margin: "0 10px" }}>Page {page} of {totalPages}</span>
+          <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
+            Next
+          </button>
+        </div>
+      )}
+      {ratings.length > 0 && page === totalPages && (
+        <p style={{ textAlign: "center", color: "gray", marginTop: "12px" }}>
+          You've reached the end — no more reviews to show.
+        </p>
+      )}
     </div>
   );
 }

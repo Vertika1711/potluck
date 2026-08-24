@@ -95,31 +95,56 @@ router.get("/mine", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// GET /api/ratings/user/:userId — fetch all ratings ABOUT a specific
-// user (their reviews), sortable by most recent (default) or most
-// helpful. Public -- no login needed to read reviews, same as
-// browsing listings.
+// GET /api/ratings/user/:userId — fetch ratings ABOUT a specific user
+// (their reviews), with pagination, optional date-range filtering, and
+// sorting by most recent (default) or most helpful. Public -- no login
+// needed to read reviews, same as browsing listings.
 router.get("/user/:userId", async (req, res) => {
   try {
     const sort = req.query.sort === "helpful" ? "helpful" : "recent";
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 6;
 
-    const ratings = await Rating.find({ ratedUserId: req.params.userId }).populate(
-      "raterId",
-      "name"
-    );
+    // Build the base query -- always filtered to this user, optionally
+    // narrowed further by a date range if both dates were provided.
+    const query: any = { ratedUserId: req.params.userId };
+
+    if (req.query.startDate && req.query.endDate) {
+      query.createdAt = {
+        $gte: new Date(req.query.startDate as string),
+        // Setting the end of the day for endDate, so a date-only value
+        // like "2026-08-23" includes ratings made ANY time that day,
+        // not just exactly at midnight.
+        $lte: new Date(`${req.query.endDate}T23:59:59.999Z`),
+      };
+    }
+
+    const allMatching = await Rating.find(query).populate("raterId", "name");
     // .populate("raterId", "name") -- same technique as listings.ts's
     // single-listing route -- shows WHO left each review by name,
     // without exposing their email or other private fields.
 
     if (sort === "helpful") {
       // Most helpful first -- more helpfulUserIds entries = ranked higher.
-      ratings.sort((a, b) => b.helpfulUserIds.length - a.helpfulUserIds.length);
+      allMatching.sort((a, b) => b.helpfulUserIds.length - a.helpfulUserIds.length);
     } else {
       // Most recent first -- the default.
-      ratings.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      allMatching.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     }
 
-    res.status(200).json(ratings);
+    // Slice out just this page, AFTER sorting the full filtered set --
+    // sorting a partial slice would give the wrong order.
+    const totalCount = allMatching.length;
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+    const startIndex = (page - 1) * limit;
+    const pageOfRatings = allMatching.slice(startIndex, startIndex + limit);
+
+    res.status(200).json({
+      ratings: pageOfRatings,
+      totalCount,
+      totalPages,
+      currentPage: page,
+    });
   } catch (error) {
     console.error("Fetch ratings error:", error);
     res.status(500).json({ error: "Something went wrong fetching ratings." });
