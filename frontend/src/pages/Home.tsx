@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import hero from "../assets/hero.png";
 import aboutImage from "../assets/about-image.png";
@@ -16,6 +16,11 @@ function Home() {
   const aboutRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
 
+  // NEW: controls the mobile nav dropdown. Below the `lg` breakpoint
+  // (1024px) the 6 nav items no longer fit next to the wordmark, so
+  // they collapse behind this hamburger toggle instead of overflowing.
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   useEffect(() => {
     // If already logged in, skip the landing page entirely -- there's
     // no reason a signed-in user should see "Log In / Sign Up" buttons.
@@ -27,16 +32,17 @@ function Home() {
 
   function scrollToHome() {
     homeRef.current?.scrollIntoView({ behavior: "smooth" });
+    setMobileMenuOpen(false); // NEW: close the mobile menu after navigating
   }
 
   function scrollToAbout() {
     aboutRef.current?.scrollIntoView({ behavior: "smooth" });
+    setMobileMenuOpen(false);
   }
 
   function scrollToFlow() {
-    // Flow's section doesn't exist yet -- this is a no-op until it's
-    // built next, per the plan to do Home + About first.
     flowRef.current?.scrollIntoView({ behavior: "smooth" });
+    setMobileMenuOpen(false);
   }
 
   return (
@@ -45,17 +51,23 @@ function Home() {
     // the app's normal centered 1126px column (set in index.css's #root).
     <div className="w-screen relative left-1/2 -ml-[50vw] bg-[#efe0c0] font-sans">
 
-      {/* Sticky header -- unchanged from before. */}
-      <header className="sticky top-0 z-50 bg-[#f7ecd8] border-b border-[#c9a06c] px-8 py-4 flex justify-between items-center">
+      {/* Sticky header. NEW: `relative` added so the mobile dropdown
+          (below) can position itself directly beneath the header via
+          `absolute top-full`. Padding now scales down on small screens
+          (px-4 on mobile vs. px-8 on desktop) since there's less width
+          to spare. */}
+      <header className="sticky top-0 z-50 bg-[#f7ecd8] border-b border-[#c9a06c] px-4 sm:px-8 py-4 flex justify-between items-center relative">
         <button
           onClick={scrollToHome}
-          className="text-3xl text-[#4a3620] cursor-pointer"
+          className="text-2xl sm:text-3xl text-[#4a3620] cursor-pointer"
           style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700 }}
         >
           Potluck
         </button>
 
-        <nav className="flex items-center gap-6 font-semibold">
+        {/* Desktop/tablet-landscape nav -- unchanged content and styling,
+            just hidden below `lg` (1024px) where it no longer fits. */}
+        <nav className="hidden lg:flex items-center gap-6 font-semibold">
           <button onClick={scrollToHome} className="text-[#4a3620] hover:text-[#8b5a2b]">
             Home
           </button>
@@ -79,24 +91,82 @@ function Home() {
             </button>
           </Link>
         </nav>
+
+        {/* NEW: Hamburger toggle -- only shown below `lg`. Plain inline
+            SVG (no icon library dependency), swaps to an "X" when open.
+            This is the "genuinely necessary" mobile nav solution: same
+            6 destinations, none removed, just collapsed into a menu. */}
+        <button
+          className="lg:hidden text-[#4a3620]"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+          aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+        >
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            {mobileMenuOpen ? (
+              <path d="M6 6L18 18M6 18L18 6" strokeLinecap="round" />
+            ) : (
+              <path d="M4 7H20M4 12H20M4 17H20" strokeLinecap="round" />
+            )}
+          </svg>
+        </button>
+
+        {/* NEW: Mobile dropdown panel -- same 6 links as the desktop nav,
+            same colors/typography, just stacked vertically and only
+            rendered when open. Positioned directly under the header via
+            `absolute top-full`, spanning the full header width. */}
+        {mobileMenuOpen && (
+          <nav className="lg:hidden absolute top-full left-0 w-full bg-[#f7ecd8] border-b border-[#c9a06c] flex flex-col items-center gap-4 py-6 font-semibold">
+            <button onClick={scrollToHome} className="text-[#4a3620] hover:text-[#8b5a2b]">
+              Home
+            </button>
+            <button onClick={scrollToAbout} className="text-[#4a3620] hover:text-[#8b5a2b]">
+              About
+            </button>
+            <button onClick={scrollToFlow} className="text-[#4a3620] hover:text-[#8b5a2b]">
+              Flow
+            </button>
+            <Link to="/browse-listings" onClick={() => setMobileMenuOpen(false)} className="text-[#4a3620] hover:text-[#8b5a2b]">
+              Explore
+            </Link>
+            <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
+              <button className="px-4 py-2 border border-[#8b5a2b] text-[#4a3620] rounded hover:bg-[#efe0c0]">
+                Log In
+              </button>
+            </Link>
+            <Link to="/signup" onClick={() => setMobileMenuOpen(false)}>
+              <button className="px-4 py-2 bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]">
+                Sign Up
+              </button>
+            </Link>
+          </nav>
+        )}
       </header>
 
-      {/* HOME SECTION -- min-h-screen makes it fill at least one full
-          viewport height. Everything inside (image, tagline, subtitle,
-          button) is EXACTLY as it was before -- only the wrapping
-          around it has changed, not its own content or styling. */}
+      {/* HOME SECTION -- min-h-[calc(100vh-72px)] was already safe
+          (min-height, not a fixed height), so no structural change is
+          needed here, just the two overflow-prone details below. */}
       <div ref={homeRef} className="min-h-[calc(100vh-72px)] flex flex-col scroll-mt-[88px]">
-        <div className="w-full h-[60vh]">
+        {/* NEW: object-fill -> object-cover. object-fill was actively
+            stretching/distorting the image to force-fit the box;
+            object-cover crops to fill the box while keeping the image's
+            real proportions -- a correctness fix, not a style change.
+            Height now scales in three steps instead of a flat 60vh, so
+            the image doesn't dominate a short mobile viewport. */}
+        <div className="w-full h-[45vh] sm:h-[55vh] lg:h-[60vh]">
           <img
             src={hero}
             alt="People exchanging skills — teaching, coding, cooking, and more"
-            className="w-full h-full object-fill"
+            className="w-full h-full object-cover"
           />
         </div>
 
-        <div className="flex-1 flex flex-col justify-center max-w-4xl mx-auto px-6 text-center">
+        <div className="flex-1 flex flex-col justify-center max-w-4xl mx-auto px-4 sm:px-6 text-center">
+          {/* NEW: whitespace-nowrap removed so this sentence wraps
+              instead of forcing horizontal scroll. Font size now steps
+              down on narrow screens instead of staying fixed at the
+              desktop size. */}
           <p
-            className="text-3xl text-[#5c4326] whitespace-nowrap"
+            className="text-xl sm:text-2xl lg:text-3xl text-[#5c4326] whitespace-normal lg:whitespace-nowrap"
             style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, marginBottom: "8px" }}
           >
             A Barter Marketplace for Trading Any Skill — No Money, Ever.
@@ -112,15 +182,18 @@ function Home() {
         </div>
       </div>
 
-      {/* ABOUT SECTION -- min-h-[calc(100vh-88px)] instead of min-h-screen: 
-          without this, the section is sized for the FULL viewport height, but
-          scroll-mt-[88px] only leaves 88px of room below the sticky header -- 
-          mismatched numbers meant this section always overshot the bottom of 
-          the window. Matching both to 88px keeps the section's bottom flush with
-          the window's bottom when scrolled to. */}
-      <div ref={aboutRef} className="h-[calc(100vh-88px)] flex justify-center scroll-mt-[88px] p-16">
-        <div className="bg-white/60 backdrop-blur-sm rounded-lg w-full h-full flex items-center justify-center gap-8 p-8">
-          <div className="flex items-center gap-4 max-w-4xl mx-auto">
+      {/* ABOUT SECTION. NEW: `h-[...]` (fixed height) -> `min-h-[...]`.
+          At the fixed height, once text+image switch from a row to a
+          stacked column on mobile, the stacked content is taller than
+          one viewport and the fixed height would clip it. min-height
+          lets the section grow to fit instead.
+          Layout: `flex-col md:flex-row` -- stacked below 768px (text
+          then image), side-by-side at 768px and up, exactly like the
+          desktop version above that. Padding/gaps step down on smaller
+          screens so there's room for the stacked content. */}
+      <div ref={aboutRef} className="min-h-[calc(100vh-88px)] flex justify-center scroll-mt-[88px] p-4 sm:p-8 lg:p-16">
+        <div className="bg-white/60 backdrop-blur-sm rounded-lg w-full flex flex-col md:flex-row items-center justify-center gap-6 md:gap-8 p-4 sm:p-6 lg:p-8">
+          <div className="flex flex-col md:flex-row items-center gap-4 max-w-4xl mx-auto">
             <div className="flex-1 flex flex-col gap-2 text-left">
               <h2
                 className="leading-none text-center"
@@ -128,7 +201,10 @@ function Home() {
                   fontFamily: "'Playfair Display', serif",
                   fontWeight: 900,
                   color: "#4a7c59",
-                  fontSize: "2rem",
+                  // NEW: clamp() keeps the exact 2rem desktop size but
+                  // lets it scale down smoothly on narrow screens
+                  // instead of staying fixed.
+                  fontSize: "clamp(1.5rem, 5vw, 2rem)",
                 }}
               >
                 About
@@ -157,19 +233,23 @@ function Home() {
                   </p>
                 </div>
             </div>
-            <img src={aboutImage} alt="" className="w-85 rounded-lg" />
+            {/* NEW: fixed w-85 -> steps down on smaller screens, and
+                max-w-full + h-auto guarantee it can never force
+                horizontal overflow on a narrow screen. */}
+            <img src={aboutImage} alt="" className="w-48 sm:w-64 md:w-56 lg:w-85 max-w-full h-auto rounded-lg" />
           </div>
         </div>
       </div>
       
-      {/* FLOW SECTION -- same structural pattern as About: fixed height
-          matching the viewport-minus-header, scroll-mt-[88px] so the
-          sticky header doesn't cover it when scrolled to, and a
-          translucent white box centered with p-16 padding on all sides.
-          Content is a placeholder for now, same as About started. */}
-      <div ref={flowRef} className="h-[calc(100vh-88px)] flex justify-center scroll-mt-[88px] p-16">
-        <div className="bg-white/60 backdrop-blur-sm rounded-lg w-full h-full flex items-center justify-center gap-8 p-8">
-          <img src={flowImage} alt="" className="w-85 rounded-lg" />
+      {/* FLOW SECTION -- same structural pattern and same fixes as
+          About: min-height instead of fixed height, flex-col below
+          md and flex-row at md+, responsive image width, clamp()'d
+          heading size. Image-then-text DOM order is preserved, so on
+          mobile it stacks image-on-top-of-text, same reading order as
+          it already renders in desktop's row. */}
+      <div ref={flowRef} className="min-h-[calc(100vh-88px)] flex justify-center scroll-mt-[88px] p-4 sm:p-8 lg:p-16">
+        <div className="bg-white/60 backdrop-blur-sm rounded-lg w-full flex flex-col md:flex-row items-center justify-center gap-6 md:gap-8 p-4 sm:p-6 lg:p-8">
+          <img src={flowImage} alt="" className="w-48 sm:w-64 md:w-56 lg:w-85 max-w-full h-auto rounded-lg" />
           <div className="flex-1 flex flex-col gap-3 max-w-lg">
             <h2
               className="leading-none"
@@ -177,7 +257,7 @@ function Home() {
                 fontFamily: "'Playfair Display', serif",
                 fontWeight: 900,
                 color: "#4a7c59",
-                fontSize: "2rem",
+                fontSize: "clamp(1.5rem, 5vw, 2rem)",
               }}
             >
               How It Works
@@ -198,14 +278,14 @@ function Home() {
         </div>
       </div>
 
-      {/* FOOTER -- dark brown background, distinct from the page's cream
-          tone, with a heading, short line, a CTA button linking to
-          Browse Listings, and a subtle copyright line at the very
-          bottom in a muted/faded color so it doesn't compete with the
-          CTA above it. */}
-      <footer className="py-3 px-12" style={{ backgroundColor: "#3e2c1c" }}>
-        <div className="flex items-center justify-between max-w-5xl mx-auto gap-8">
-          <div className="text-left">
+      {/* FOOTER. NEW: `flex-col md:flex-row` -- text block and button
+          stack vertically (centered) below 768px instead of squeezing
+          into a row. Padding steps down on smaller screens. Everything
+          else -- colors, the CTA button, the copyright line -- is
+          untouched. */}
+      <footer className="py-6 md:py-3 px-4 sm:px-8 lg:px-12" style={{ backgroundColor: "#3e2c1c" }}>
+        <div className="flex flex-col md:flex-row items-center justify-between max-w-5xl mx-auto gap-4 md:gap-8">
+          <div className="text-center md:text-left">
             <h2
               className="text-2xl mb-1"
               style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, color: "#f7ecd8" }}
@@ -222,7 +302,7 @@ function Home() {
             </button>
           </Link>
         </div>
-        <p className="mt-20 text-sm text-center" style={{ color: "#7a6a58" }}>
+        <p className="mt-10 md:mt-20 text-sm text-center" style={{ color: "#7a6a58" }}>
           © 2026 Potluck
         </p>
       </footer>
