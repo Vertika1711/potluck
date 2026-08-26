@@ -280,7 +280,10 @@ function Explore() {
         </div>
 
         {error && (
-          <p className="mb-4 text-sm text-red-700 bg-red-50 border border-red-300 rounded px-3 py-2 max-w-md mx-auto">
+          <p
+            className="mb-4 text-sm text-red-700 bg-red-50 border border-red-300 rounded px-3 py-2 max-w-md"
+            style={{ margin: "0 auto 16px" }}
+          >
             {error}
           </p>
         )}
@@ -429,7 +432,10 @@ function Explore() {
             </div>
 
             {userSearchError && (
-              <p className="mb-4 text-sm text-red-700 bg-red-50 border border-red-300 rounded px-3 py-2 max-w-md mx-auto">
+              <p
+                className="mb-4 text-sm text-red-700 bg-red-50 border border-red-300 rounded px-3 py-2 max-w-md"
+                style={{ margin: "0 auto 16px" }}
+              >
                 {userSearchError}
               </p>
             )}
