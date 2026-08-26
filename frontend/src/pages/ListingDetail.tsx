@@ -45,7 +45,7 @@ function ListingDetail() {
     fetchListing();
   }, [id, token]);
 
-  // Same request-swap logic as BrowseListings.tsx, just living here
+  // Same request-swap logic as Explore.tsx, just living here
   // now instead -- this page becomes the ONE place swap requests
   // actually get sent from.
   async function handleRequestSwap() {

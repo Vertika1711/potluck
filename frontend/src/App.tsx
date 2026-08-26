@@ -5,7 +5,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import CreateListing from "./pages/CreateListing";
-import BrowseListings from "./pages/BrowseListings"
+import Explore from "./pages/Explore";
 import MyListings from "./pages/MyListings";
 import SwapRequests from "./pages/SwapRequests";
 import SuggestedMatches from "./pages/SuggestedMatches";
@@ -25,7 +25,7 @@ function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/profile" element={<Profile />} />
       <Route path="/create-listing" element={<CreateListing />} />
-      <Route path="/browse-listings" element={<BrowseListings />} />
+      <Route path="/explore" element={<Explore />} />
       <Route path="/my-listings" element={<MyListings />} />
       <Route path="/swap-requests" element={<SwapRequests />} />
       <Route path="/suggested-matches" element={<SuggestedMatches />} />

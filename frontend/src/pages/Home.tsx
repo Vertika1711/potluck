@@ -77,7 +77,7 @@ function Home() {
           <button onClick={scrollToFlow} className="text-[#4a3620] hover:text-[#8b5a2b]">
             Flow
           </button>
-          <Link to="/browse-listings" className="text-[#4a3620] hover:text-[#8b5a2b]">
+          <Link to="/explore" className="text-[#4a3620] hover:text-[#8b5a2b]">
             Explore
           </Link>
           <Link to="/login">
@@ -125,7 +125,7 @@ function Home() {
             <button onClick={scrollToFlow} className="text-[#4a3620] hover:text-[#8b5a2b]">
               Flow
             </button>
-            <Link to="/browse-listings" onClick={() => setMobileMenuOpen(false)} className="text-[#4a3620] hover:text-[#8b5a2b]">
+            <Link to="/explore" onClick={() => setMobileMenuOpen(false)} className="text-[#4a3620] hover:text-[#8b5a2b]">
               Explore
             </Link>
             <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
@@ -296,9 +296,9 @@ function Home() {
               Explore skills people are offering and looking to learn — you might find your next swap.
             </p>
           </div>
-          <Link to="/browse-listings">
+          <Link to="/explore">
             <button className="px-6 py-2 text-base font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#a97c50] whitespace-nowrap">
-              Explore Listings
+              Explore
             </button>
           </Link>
         </div>

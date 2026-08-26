@@ -198,7 +198,7 @@ function MyListings() {
               <button onClick={cancelEditing}>Cancel</button>
             </div>
           ) : (
-            // NORMAL VIEW MODE -- same layout as BrowseListings, plus buttons
+            // NORMAL VIEW MODE -- same layout as Explore, plus buttons
             <div>
               <h3>{listing.title}</h3>
               <p>{listing.description}</p>
