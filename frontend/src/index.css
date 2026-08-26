@@ -118,3 +118,8 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
