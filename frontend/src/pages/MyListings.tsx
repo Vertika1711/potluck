@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
+import Navbar from "../components/Navbar";
 
 interface Listing {
   _id: string;
@@ -13,6 +15,7 @@ interface Listing {
 }
 
 function MyListings() {
+  const navigate = useNavigate();
   const [listings, setListings] = useState<Listing[]>([]);
   const [error, setError] = useState("");
 
@@ -25,15 +28,27 @@ function MyListings() {
   // form doesn't affect the displayed list until you actually save.
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  // NEW: skillTags are now edited as a real array, not a comma-
-  // separated string -- editSkillTags holds the actual tags, and
-  // newTagInput holds whatever's currently typed into the "add a tag" box.
   const [editSkillTags, setEditSkillTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState("");
 
+  // NEW: type filter, same All/Offers/Wants pattern as Explore.
+  const [typeFilter, setTypeFilter] = useState<"all" | "offer" | "want">("all");
+
   const token = localStorage.getItem("token");
 
+  // NEW: protected-route check, same pattern as Profile.tsx/CreateListing.tsx --
+  // this page previously had no redirect at all for a logged-out visitor;
+  // it would just silently fail with a generic "Failed to load" error
+  // instead of sending them to /login.
   useEffect(() => {
+    if (!token) {
+      navigate("/login");
+    }
+  }, [token, navigate]);
+
+  useEffect(() => {
+    if (!token) return; // don't bother fetching if we're about to redirect anyway
+
     async function fetchMyListings() {
       try {
         // The backend's GET /api/listings returns ALL active listings,
@@ -57,13 +72,23 @@ function MyListings() {
     fetchMyListings();
   }, [token]);
 
+  // Avoids flashing this page's content for a split second before the
+  // redirect above actually happens.
+  if (!token) return null;
+
+  // Derived, same pattern as Explore's filteredListings -- not its own
+  // separate state, just a filtered view of the fetched listings.
+  const filteredListings = listings.filter(
+    (listing) => typeFilter === "all" || listing.type === typeFilter
+  );
+
   // Called when clicking "Edit" on a specific listing card --
   // pre-fills the edit form with that listing's current values.
   function startEditing(listing: Listing) {
     setEditingId(listing._id);
     setEditTitle(listing.title);
     setEditDescription(listing.description);
-    setEditSkillTags(listing.skillTags); // already an array -- no join needed now
+    setEditSkillTags(listing.skillTags);
     setNewTagInput("");
   }
 
@@ -71,8 +96,6 @@ function MyListings() {
     setEditingId(null);
   }
 
-  // NEW: adds whatever's in newTagInput to the editSkillTags array,
-  // trims whitespace, ignores empty input, and blocks exact duplicates.
   function addTag() {
     const trimmed = newTagInput.trim();
     if (trimmed === "" || editSkillTags.includes(trimmed)) return;
@@ -80,7 +103,6 @@ function MyListings() {
     setNewTagInput("");
   }
 
-  // NEW: removes one specific tag by value -- clicking a chip's "×".
   function removeTag(tag: string) {
     setEditSkillTags((prev) => prev.filter((t) => t !== tag));
   }
@@ -93,20 +115,16 @@ function MyListings() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Update just this one listing in local state with the server's
-      // response, instead of re-fetching everything from scratch.
       setListings((prev) =>
         prev.map((listing) => (listing._id === id ? response.data : listing))
       );
-      setEditingId(null); // exit edit mode, back to normal card view
+      setEditingId(null);
     } catch (err) {
       setError("Failed to update listing.");
     }
   }
 
   async function handleDelete(id: string) {
-    // A simple browser confirm dialog -- prevents accidental deletes
-    // from a misclick, since this action can't be undone.
     const confirmed = window.confirm("Are you sure you want to delete this listing?");
     if (!confirmed) return;
 
@@ -115,16 +133,12 @@ function MyListings() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      // Remove it from local state so it disappears from the page immediately
       setListings((prev) => prev.filter((listing) => listing._id !== id));
     } catch (err) {
       setError("Failed to delete listing.");
     }
   }
 
-  // Toggles a listing between "active" and "closed" -- e.g. when the
-  // owner feels they've taught enough people, or wants to pause
-  // requests without deleting the listing entirely.
   async function handleToggleStatus(listing: Listing) {
     const newStatus = listing.status === "active" ? "closed" : "active";
 
@@ -144,75 +158,285 @@ function MyListings() {
   }
 
   return (
-    <div>
-      <h2>My Listings</h2>
-      {error && <p style={{ color: "red" }}>{error}</p>}
+    <div className="w-screen relative left-1/2 -ml-[50vw] min-h-screen bg-[#efe0c0] font-sans">
+      <Navbar />
 
-      {listings.map((listing) => (
-        <div key={listing._id} style={{ border: "1px solid gray", padding: "10px", marginBottom: "10px" }}>
-          {editingId === listing._id ? (
-            // EDIT MODE -- shows input fields instead of plain text
-            <div>
-              <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
-              <textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
-              <div style={{ margin: "8px 0" }}>
-                {editSkillTags.map((tag) => (
-                  <span
-                    key={tag}
-                    style={{
-                      display: "inline-block",
-                      background: "#eee",
-                      color: "#333",
-                      borderRadius: "12px",
-                      padding: "4px 10px",
-                      marginRight: "6px",
-                      marginBottom: "6px",
-                      fontSize: "14px",
-                    }}
-                  >
-                    {tag}{" "}
-                    <span
-                      onClick={() => removeTag(tag)}
-                      style={{ cursor: "pointer", fontWeight: "bold" }}
-                    >
-                      ×
-                    </span>
-                  </span>
-                ))}
-                <div>
-                  <input
-                    value={newTagInput}
-                    onChange={(e) => setNewTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault(); // stops Enter from submitting/reloading anything
-                        addTag();
-                      }
-                    }}
-                    placeholder="Type a skill and press Enter"
-                  />
-                  <button type="button" onClick={addTag}>Add</button>
-                </div>
-              </div>
-              <button onClick={() => saveEdit(listing._id)}>Save</button>
-              <button onClick={cancelEditing}>Cancel</button>
-            </div>
-          ) : (
-            // NORMAL VIEW MODE -- same layout as Explore, plus buttons
-            <div>
-              <h3>{listing.title}</h3>
-              <p>{listing.description}</p>
-              <p><strong>Tags:</strong> {listing.skillTags.join(", ")}</p>
-              <p><strong>Status:</strong> {listing.status}</p>
-              <button onClick={() => startEditing(listing)}>Edit</button>
-              <button onClick={() => handleDelete(listing._id)}>Delete</button>
-              <button onClick={() => handleToggleStatus(listing)}>
-                {listing.status === "active" ? "Close Listing" : "Reopen Listing"}
-              </button>
-            </div>
-          )}
+      <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+          <h1
+            style={{
+              fontFamily: "'Playfair Display', serif",
+              fontWeight: 900,
+              color: "#4a7c59",
+              fontSize: "clamp(1.75rem, 5vw, 2.25rem)",
+            }}
+          >
+            My Listings
+          </h1>
+
+          {/* NEW: previously there was no link anywhere on this page to
+              create a new listing -- this is the natural place for it. */}
+          <Link to="/create-listing">
+            <button className="px-4 py-2 font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]">
+              + Create New Listing
+            </button>
+          </Link>
         </div>
-      ))}
+
+        {error && (
+          <p className="mb-4 text-sm text-red-700 bg-red-50 border border-red-300 rounded px-3 py-2">
+            {error}
+          </p>
+        )}
+
+        {/* NEW: type filter, matching Explore's pattern. */}
+        <div className="flex gap-3 mb-6">
+          {(["all", "offer", "want"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTypeFilter(t)}
+              className={
+                "px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors " +
+                (typeFilter === t
+                  ? "bg-[#8b5a2b] text-[#f7ecd8] border-[#8b5a2b]"
+                  : "bg-transparent text-[#4a3620] border-[#c9a06c] hover:bg-[#f1e5cc]")
+              }
+            >
+              {t === "all" ? "All" : t === "offer" ? "Offers" : "Wants"}
+            </button>
+          ))}
+        </div>
+
+        {/* Same accent-box style as Home.tsx's About section (left
+            border + light cream background) -- a first-time visitor has
+            no way to know what "Active" vs. "Closed" actually does
+            functionally, shown once here rather than repeated on every
+            card, since the explanation is the same regardless of which
+            listing you're looking at. */}
+        <div
+          className="pl-3 py-2 mb-4 rounded"
+          style={{ borderLeft: "4px solid #8b5a2b", backgroundColor: "#f1e5cc" }}
+        >
+          <p className="text-sm" style={{ color: "#4a3620" }}>
+            <span className="font-semibold" style={{ color: "#4a7c59" }}>Active</span> listings are visible on Explore and can receive swap requests. <span className="font-semibold" style={{ color: "#7a6a58" }}>Closed</span> listings are hidden until you reopen them.
+          </p>
+        </div>
+
+        {listings.length === 0 && !error && (
+          <p className="text-center text-[#7a6a58]">
+            You haven't created any listings yet.
+          </p>
+        )}
+
+        {/* NEW: a stacked single-column list, not a multi-column grid
+            like Explore's -- deliberately different, since one card can
+            expand into an inline edit form here (with full-width inputs
+            and a tag editor), and CSS Grid would stretch every card in
+            the same row to match the tallest one, making unrelated
+            sibling cards look oddly tall while one is being edited. */}
+        <div className="flex flex-col gap-4">
+          {filteredListings.map((listing) => (
+            <div key={listing._id} className="bg-white/60 backdrop-blur-sm rounded-lg p-5">
+              {editingId === listing._id ? (
+                // EDIT MODE
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label className="block mb-1 font-semibold text-[#4a3620]">Title</label>
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="w-full px-3 py-2 rounded border border-[#c9a06c] bg-[#f7ecd8] text-[#4a3620] focus:outline-none focus:border-[#8b5a2b]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 font-semibold text-[#4a3620]">Description</label>
+                    <textarea
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      rows={3}
+                      className="w-full px-3 py-2 rounded border border-[#c9a06c] bg-[#f7ecd8] text-[#4a3620] focus:outline-none focus:border-[#8b5a2b] resize-y"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-1 font-semibold text-[#4a3620]">Skill Tags</label>
+
+                    {editSkillTags.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {editSkillTags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="inline-flex items-center gap-1 text-sm text-[#4a3620] bg-[#f1e5cc] border border-[#c9a06c] rounded-full px-3 py-1"
+                          >
+                            {tag}
+                            <button
+                              type="button"
+                              onClick={() => removeTag(tag)}
+                              className="font-bold text-[#8b5a2b] hover:text-[#7a4a22]"
+                              aria-label={`Remove ${tag}`}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <input
+                        value={newTagInput}
+                        onChange={(e) => setNewTagInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addTag();
+                          }
+                        }}
+                        placeholder="Type a skill and press Enter"
+                        className="flex-1 px-3 py-2 rounded border border-[#c9a06c] bg-[#f7ecd8] text-[#4a3620] focus:outline-none focus:border-[#8b5a2b] placeholder:text-[#a99b82]"
+                      />
+                      <button
+                        type="button"
+                        onClick={addTag}
+                        className="px-4 py-2 font-semibold border border-[#8b5a2b] text-[#4a3620] rounded hover:bg-[#efe0c0]"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 mt-1">
+                    <button
+                      onClick={() => saveEdit(listing._id)}
+                      className="px-4 py-2 font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={cancelEditing}
+                      className="px-4 py-2 font-semibold border border-[#c9a06c] text-[#4a3620] rounded hover:bg-[#f1e5cc]"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                // VIEW MODE
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-lg font-semibold text-[#4a3620]">{listing.title}</h3>
+
+                  {/* Type stays a solid rounded pill (green/orange), same
+                      as Explore's cards. Status is now a plain dot +
+                      label instead of a same-shaped pill -- previously
+                      "offer" (green) and "active" (also green) looked
+                      like the same category of information at a glance,
+                      when they're actually two unrelated things (what
+                      kind of listing it is, vs. whether it's currently
+                      live). Different visual treatment makes that
+                      distinction obvious without needing new colors. */}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span
+                      className="text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5"
+                      style={
+                        listing.type === "offer"
+                          ? { backgroundColor: "#e3ede3", color: "#4a7c59" }
+                          : { backgroundColor: "#f4e3d0", color: "#b8590d" }
+                      }
+                    >
+                      {listing.type}
+                    </span>
+                    <span className="flex items-center gap-1.5 text-sm text-[#4a3620]">
+                      <span
+                        className="inline-block w-2 h-2 rounded-full"
+                        style={{ backgroundColor: listing.status === "active" ? "#4a7c59" : "#7a6a58" }}
+                      />
+                      {listing.status === "active" ? "Active" : "Closed"}
+                    </span>
+                  </div>
+
+                  <p className="text-[#4a3620]">{listing.description}</p>
+
+                  <div className="flex flex-wrap gap-1">
+                    {listing.skillTags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="text-xs text-[#4a3620] bg-[#f1e5cc] border border-[#c9a06c] rounded-full px-2 py-0.5"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* NEW: posting date. */}
+                  <p className="text-xs text-[#7a6a58]">
+                    Posted on {new Date(listing.createdAt).toLocaleDateString()}
+                  </p>
+
+                  {/* NEW: icons added to Edit/Delete (plain inline SVGs,
+                      no icon library). Delete moved to the right edge of
+                      the row via ml-auto, and switched from an outlined
+                      style to a solid red fill with white text/icon --
+                      making it read as the one genuinely destructive
+                      action on the card, distinct from Edit/Close which
+                      are both reversible. */}
+                  <div className="flex items-center gap-2 flex-wrap mt-1">
+                    {/* Edit is now solid (primary action) instead of
+                        outlined, so it no longer looks like a twin of
+                        Close/Reopen below it. */}
+                    <button
+                      onClick={() => startEditing(listing)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 20h9" strokeLinecap="round" />
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      Edit
+                    </button>
+
+                    {/* NEW: this button's color now matches the status
+                        it will produce, not a fixed neutral color -- so
+                        it visually connects to the dot indicator above
+                        instead of looking unrelated to it. "Close
+                        Listing" (leads to Closed) uses the same muted
+                        gray as the closed-state dot; "Reopen Listing"
+                        (leads to Active) uses the same green as the
+                        active-state dot. A matching small dot inside the
+                        button reinforces the same connection. */}
+                    <button
+                      onClick={() => handleToggleStatus(listing)}
+                      className={
+                        "flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold border rounded " +
+                        (listing.status === "active"
+                          ? "border-[#7a6a58] text-[#7a6a58] hover:bg-[#e5e0d8]"
+                          : "border-[#4a7c59] text-[#4a7c59] hover:bg-[#e3ede3]")
+                      }
+                    >
+                      <span
+                        className="inline-block w-2 h-2 rounded-full"
+                        style={{ backgroundColor: listing.status === "active" ? "#7a6a58" : "#4a7c59" }}
+                      />
+                      {listing.status === "active" ? "Close Listing" : "Reopen Listing"}
+                    </button>
+
+                    <button
+                      onClick={() => handleDelete(listing._id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold bg-red-600 text-white rounded hover:bg-red-700 ml-auto"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 6h18" strokeLinecap="round" />
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

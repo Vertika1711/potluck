@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import Navbar from "../components/Navbar";
 
 // Describes the shape of one listing coming back from the backend,
 // so TypeScript knows what fields we can safely use below.
@@ -52,11 +53,6 @@ function Explore() {
   // full list in memory to work correctly across all listings, not just
   // whatever page happens to be loaded.
   const [visibleCount, setVisibleCount] = useState(12);
-
-  // NEW: controls the header's mobile nav dropdown, same pattern as
-  // Home.tsx -- collapses Home/Log In/Sign Up behind a hamburger toggle
-  // below the `lg` breakpoint instead of letting them overflow.
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // NEW: state for the People tab -- separate from the listings search,
   // since this one hits the backend (GET /api/users/search) instead of
@@ -156,81 +152,7 @@ function Explore() {
     // below sits in a centered, readable column.
     <div className="w-screen relative left-1/2 -ml-[50vw] min-h-screen bg-[#efe0c0] font-sans">
 
-      {/* NOTE: this is the same simplified header used on the auth pages
-          (wordmark + icon-over-label Home link), used here as a
-          placeholder only until the authenticated Navbar (Browse
-          Listings/My Listings/Suggested Matches/Swap Requests/Profile/Log
-          Out) gets built -- that's tracked as its own separate task in
-          STATE.md, not done as part of this page's restyle. */}
-      {/* Same header structure/style as Home.tsx -- sticky, py-4, a
-          hidden-below-lg desktop nav, and a hamburger dropdown below that
-          -- just trimmed down to Home/Log In/Sign Up, since About/Flow/
-          Explore don't apply on this page. This is still a placeholder
-          for the authenticated Navbar (tracked separately in STATE.md),
-          but now matches Home's visual language exactly instead of
-          reusing the auth pages' more minimal header. */}
-      <header className="sticky top-0 z-50 bg-[#f7ecd8] border-b border-[#c9a06c] px-4 sm:px-8 py-4 flex justify-between items-center relative">
-        <Link
-          to="/"
-          className="text-2xl sm:text-3xl text-[#4a3620]"
-          style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700 }}
-        >
-          Potluck
-        </Link>
-
-        {/* Desktop nav -- hidden below `lg`, same as Home.tsx. */}
-        <nav className="hidden lg:flex items-center gap-6 font-semibold">
-          <Link to="/" className="text-[#4a3620] hover:text-[#8b5a2b]">
-            Home
-          </Link>
-          <Link to="/login">
-            <button className="px-4 py-2 border border-[#8b5a2b] text-[#4a3620] rounded hover:bg-[#efe0c0]">
-              Log In
-            </button>
-          </Link>
-          <Link to="/signup">
-            <button className="px-4 py-2 bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]">
-              Sign Up
-            </button>
-          </Link>
-        </nav>
-
-        {/* Hamburger toggle -- only shown below `lg`, identical to
-            Home.tsx's. */}
-        <button
-          className="lg:hidden text-[#4a3620]"
-          onClick={() => setMobileMenuOpen((open) => !open)}
-          aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-        >
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            {mobileMenuOpen ? (
-              <path d="M6 6L18 18M6 18L18 6" strokeLinecap="round" />
-            ) : (
-              <path d="M4 7H20M4 12H20M4 17H20" strokeLinecap="round" />
-            )}
-          </svg>
-        </button>
-
-        {/* Mobile dropdown -- same 3 links, stacked vertically, same
-            positioning/styling as Home.tsx's version. */}
-        {mobileMenuOpen && (
-          <nav className="lg:hidden absolute top-full left-0 w-full bg-[#f7ecd8] border-b border-[#c9a06c] flex flex-col items-center gap-4 py-6 font-semibold">
-            <Link to="/" onClick={() => setMobileMenuOpen(false)} className="text-[#4a3620] hover:text-[#8b5a2b]">
-              Home
-            </Link>
-            <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
-              <button className="px-4 py-2 border border-[#8b5a2b] text-[#4a3620] rounded hover:bg-[#efe0c0]">
-                Log In
-              </button>
-            </Link>
-            <Link to="/signup" onClick={() => setMobileMenuOpen(false)}>
-              <button className="px-4 py-2 bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]">
-                Sign Up
-              </button>
-            </Link>
-          </nav>
-        )}
-      </header>
+      <Navbar />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-4 pb-8">
         {/* Displayed heading only -- "Explore" instead of "Explore
@@ -249,8 +171,8 @@ function Explore() {
           Explore
         </h1>
 
-        {/* NEW: top-level tab switcher between the two things this page
-            now covers -- finding a listing, or finding a person. Visually
+        {/* Top-level tab switcher between the two things this page now
+            covers -- finding a listing, or finding a person. Visually
             distinct from the type-filter pills below (larger, sits above
             everything else) so it reads as switching the whole view, not
             another filter within Listings. */}
@@ -314,7 +236,7 @@ function Explore() {
           />
         </div>
 
-        {/* NEW: type filter -- three pill buttons, active one highlighted.
+        {/* Type filter -- three pill buttons, active one highlighted.
             Combines with the search box (AND logic, see filteredListings
             above): a listing must match both the selected type and the
             search text to show up. */}
@@ -348,10 +270,9 @@ function Explore() {
             efficiently. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {visibleListings.map((listing) => (
-            // NEW: the whole card is now the Link (was just the title
-            // before). A hover treatment (slightly more opaque background)
-            // gives visual feedback that the entire card is clickable, not
-            // just the title text.
+            // The whole card is the Link (not just the title). A hover
+            // treatment (slightly more opaque background) gives visual
+            // feedback that the entire card is clickable.
             <Link
               key={listing._id}
               to={`/listing/${listing._id}`}
@@ -395,7 +316,7 @@ function Explore() {
           ))}
         </div>
 
-        {/* NEW: only shown when there are more results beyond what's
+        {/* Only shown when there are more results beyond what's
             currently visible. Clicking reveals 12 more from the already-
             fetched filteredListings -- no network request happens here. */}
         {visibleCount < filteredListings.length && (
