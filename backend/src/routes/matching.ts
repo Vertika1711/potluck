@@ -7,9 +7,6 @@ import OpenAI from "openai";
 
 const router = Router();
 
-// Groups a flat list of listings by which user owns them -- used for
-// BOTH exact-match scoring and the AI-relatedness pool, since a
-// "candidate" is a whole person's skill profile, not one listing.
 function groupListingsByUser(listings: any[]) {
   const grouped: Record<string, any[]> = {};
   for (const listing of listings) {
@@ -20,51 +17,78 @@ function groupListingsByUser(listings: any[]) {
   return grouped;
 }
 
-// Computes exact-tag-match scores for every candidate, in BOTH
-// directions (my wants vs their offers, my offers vs their wants),
-// per the brief's "mutual match combines scores from both directions."
-// No cap here -- every genuine exact match is included; capping only
-// happens later, at the pagination step.
+interface MatchCard {
+  userId: string;
+  listingId: string;
+  title: string;
+  description: string;
+  type: "offer" | "want";
+  skillTags: string[];
+  matchedTags: string[];
+}
+
 async function getExactMatches(
   myWantTags: string[],
   myOfferTags: string[],
   listingsByUser: Record<string, any[]>
 ) {
-    const candidates: { userId: string; score: number; matchedTags: string[]; listings: any[] }[] = [];
+  const candidates: {
+    userId: string;
+    score: number;
+    matchedListings: Omit<MatchCard, "userId">[];
+  }[] = [];
 
   for (const [candidateUserId, candidateListings] of Object.entries(listingsByUser)) {
-    const theirWantTags = candidateListings.filter((l) => l.type === "want").flatMap((l) => l.skillTags);
-    const theirOfferTags = candidateListings.filter((l) => l.type === "offer").flatMap((l) => l.skillTags);
+    const theirOfferListings = candidateListings.filter((l) => l.type === "offer");
+    const theirWantListings = candidateListings.filter((l) => l.type === "want");
+
+    const theirOfferTags = theirOfferListings.flatMap((l) => l.skillTags);
+    const theirWantTags = theirWantListings.flatMap((l) => l.skillTags);
 
     const forwardMatches = myWantTags.filter((tag) => theirOfferTags.includes(tag));
     const backwardMatches = myOfferTags.filter((tag) => theirWantTags.includes(tag));
 
     const exactScore = (forwardMatches.length + backwardMatches.length) * 50;
 
-        if (exactScore > 0) {
+    if (exactScore > 0) {
+      const matchedListings: Omit<MatchCard, "userId">[] = [];
+
+      for (const listing of theirOfferListings) {
+        const matchedTags = listing.skillTags.filter((tag: string) => forwardMatches.includes(tag));
+        if (matchedTags.length > 0) {
+          matchedListings.push({
+            listingId: listing._id.toString(),
+            title: listing.title,
+            description: listing.description,
+            type: listing.type,
+            skillTags: listing.skillTags,
+            matchedTags,
+          });
+        }
+      }
+
+      for (const listing of theirWantListings) {
+        const matchedTags = listing.skillTags.filter((tag: string) => backwardMatches.includes(tag));
+        if (matchedTags.length > 0) {
+          matchedListings.push({
+            listingId: listing._id.toString(),
+            title: listing.title,
+            description: listing.description,
+            type: listing.type,
+            skillTags: listing.skillTags,
+            matchedTags,
+          });
+        }
+      }
+
       candidates.push({
         userId: candidateUserId,
         score: exactScore,
-        matchedTags: [...new Set([...forwardMatches, ...backwardMatches])],
-        // Carries the candidate's actual listings through, so the
-        // frontend can render real cards (not just an ID) and know
-        // which specific tags to highlight within them.
-        listings: candidateListings.map((l) => ({
-          _id: l._id,
-          title: l.title,
-          description: l.description,
-          type: l.type,
-          skillTags: l.skillTags,
-        })),
+        matchedListings,
       });
     }
   }
 
-  // Fetch trust scores for every candidate in ONE query (not one per
-  // candidate), so we can break ties fairly. NOTE: trustScore is always
-  // 0 for everyone right now, since Phase 5 hasn't been built yet --
-  // this tiebreak logic is correct and ready, but won't visibly do
-  // anything until real trust scores exist.
   const userIds = candidates.map((c) => c.userId);
   const users = await User.find({ _id: { $in: userIds } }).select("trustScore");
   const trustScoreByUserId: Record<string, number> = {};
@@ -77,7 +101,6 @@ async function getExactMatches(
     trustScore: trustScoreByUserId[c.userId] || 0,
   }));
 
-  // Primary sort: highest score first. Tiebreak: higher trust score first.
   withTrust.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     return b.trustScore - a.trustScore;
@@ -86,62 +109,88 @@ async function getExactMatches(
   return withTrust;
 }
 
-// Builds the pool of candidates who have ZERO exact matches -- these
-// are only worth considering via AI relatedness scoring. Sorted by
-// userId (a stable, arbitrary-but-consistent order) so that page 2's
-// "next 6" always means the same actual people as it did on a
-// previous request, rather than shifting around unpredictably.
+function flattenExactMatches(
+  exactMatches: { userId: string; matchedListings: Omit<MatchCard, "userId">[] }[]
+): MatchCard[] {
+  return exactMatches.flatMap((match) =>
+    match.matchedListings.map((listing) => ({
+      userId: match.userId,
+      ...listing,
+    }))
+  );
+}
+
+// NEW: builds the set of listing IDs that already contributed to an
+// EXACT match -- used to exclude just those specific listings from AI
+// consideration, not the whole person. Fixes a real gap found during
+// testing: a person who has ONE exact-matching listing (e.g. a cooking
+// tag overlap) was previously excluded from AI scoring ENTIRELY, even
+// though a completely different listing of theirs (e.g. "Pottery")
+// might be genuinely AI-related to something else of mine. Now only
+// the specific listings that already matched exactly are excluded --
+// their other listings remain eligible for AI relatedness.
+function getMatchedListingIds(
+  exactMatches: { matchedListings: Omit<MatchCard, "userId">[] }[]
+): Set<string> {
+  const ids = new Set<string>();
+  for (const match of exactMatches) {
+    for (const listing of match.matchedListings) {
+      ids.add(listing.listingId);
+    }
+  }
+  return ids;
+}
+
+// Builds the pool of candidates worth checking for AI relatedness --
+// now scoped to INDIVIDUAL LISTINGS not already claimed by an exact
+// match, rather than excluding an entire person just because ONE of
+// their listings happened to match exactly. A person can legitimately
+// appear in exactMatches (via one listing) AND still be checked here
+// (via a different, exact-match-free listing of theirs).
 function getAiCandidatePool(
-  myWantTags: string[],
-  myOfferTags: string[],
   listingsByUser: Record<string, any[]>,
-  exactMatchUserIds: Set<string>
+  matchedListingIds: Set<string>
 ) {
   const pool: {
     userId: string;
     theirWantTags: string[];
     theirOfferTags: string[];
-    listings: any[];
+    theirOfferListings: any[];
+    theirWantListings: any[];
   }[] = [];
 
   for (const [candidateUserId, candidateListings] of Object.entries(listingsByUser)) {
-    // Skip anyone who already scored an exact match -- they're
-    // already handled by getExactMatches, we don't want them
-    // considered twice or double-counted in the AI tier.
-    if (exactMatchUserIds.has(candidateUserId)) continue;
+    // Only keep listings that DIDN'T already contribute to an exact
+    // match -- this is the key change from the previous per-person
+    // exclusion.
+    const remainingListings = candidateListings.filter(
+      (l) => !matchedListingIds.has(l._id.toString())
+    );
 
-    const theirWantTags = candidateListings.filter((l) => l.type === "want").flatMap((l) => l.skillTags);
-    const theirOfferTags = candidateListings.filter((l) => l.type === "offer").flatMap((l) => l.skillTags);
+    const theirOfferListings = remainingListings.filter((l) => l.type === "offer");
+    const theirWantListings = remainingListings.filter((l) => l.type === "want");
+    const theirOfferTags = theirOfferListings.flatMap((l) => l.skillTags);
+    const theirWantTags = theirWantListings.flatMap((l) => l.skillTags);
 
-    // Only worth including if there's SOMETHING to compare -- a
-    // candidate with no tags at all on either side can't meaningfully
-    // be scored for relatedness.
-        if (theirWantTags.length > 0 || theirOfferTags.length > 0) {
+    // If a candidate's only listings were already exact-matched,
+    // remainingListings will be empty and theirWantTags/theirOfferTags
+    // will both be empty -- naturally excluded here, same as before.
+    if (theirWantTags.length > 0 || theirOfferTags.length > 0) {
       pool.push({
         userId: candidateUserId,
         theirWantTags,
         theirOfferTags,
-        listings: candidateListings.map((l) => ({
-          _id: l._id,
-          title: l.title,
-          description: l.description,
-          type: l.type,
-          skillTags: l.skillTags,
-        })),
+        theirOfferListings,
+        theirWantListings,
       });
     }
   }
 
-  // Stable sort by userId string -- arbitrary choice, but consistent
-  // across requests, which is what actually matters for pagination.
   pool.sort((a, b) => a.userId.localeCompare(b.userId));
 
   return pool;
 }
 
-// Same lazy-client pattern as listings.ts's suggest-tags route --
-// created only when actually called, not at module import time,
-// avoiding the "Missing credentials" startup crash from Phase 2.
 function getGroqClient() {
   return new OpenAI({
     apiKey: process.env.GROQ_API_KEY,
@@ -149,19 +198,12 @@ function getGroqClient() {
   });
 }
 
-// For ONE candidate with zero exact matches, asks the AI whether any
-// of their tags are meaningfully related to any of mine, in EITHER
-// direction (my wants vs their offers, my offers vs their wants) --
-// same "mutual match" principle as the exact-match scoring.
-// Returns null if nothing is genuinely related, or the AI call fails.
 async function getAiRelatedness(
   myWantTags: string[],
   myOfferTags: string[],
   theirWantTags: string[],
   theirOfferTags: string[]
 ): Promise<{ myTag: string; theirTag: string; score: number } | null> {
-  // Nothing to compare on one side or the other -- skip the API call
-  // entirely rather than wasting a request on an impossible match.
   if ((myWantTags.length === 0 && myOfferTags.length === 0) ||
       (theirWantTags.length === 0 && theirOfferTags.length === 0)) {
     return null;
@@ -197,18 +239,52 @@ async function getAiRelatedness(
       return { myTag: parsed.myTag, theirTag: parsed.theirTag, score: parsed.score };
     }
 
-    return null; // AI decided nothing was actually related
+    return null;
   } catch (error) {
-    // Same graceful-fallback principle as Phase 2's suggest-tags route --
-    // if the AI call fails, this candidate is simply excluded from the
-    // AI tier rather than breaking the whole matches request.
     console.error("AI relatedness error:", error);
     return null;
   }
 }
 
-const PAGE_SIZE = 6;
-const MAX_TOTAL = 30; // hard cap: 5 pages of 6
+function buildAiMatchCard(
+  candidateUserId: string,
+  myWantTags: string[],
+  myTag: string,
+  theirTag: string,
+  theirOfferListings: any[],
+  theirWantListings: any[]
+): MatchCard | null {
+  const fromOffers = theirOfferListings.find((l: any) => l.skillTags.includes(theirTag));
+  if (fromOffers) {
+    return {
+      userId: candidateUserId,
+      listingId: fromOffers._id.toString(),
+      title: fromOffers.title,
+      description: fromOffers.description,
+      type: fromOffers.type,
+      skillTags: fromOffers.skillTags,
+      matchedTags: [theirTag],
+    };
+  }
+
+  const fromWants = theirWantListings.find((l: any) => l.skillTags.includes(theirTag));
+  if (fromWants) {
+    return {
+      userId: candidateUserId,
+      listingId: fromWants._id.toString(),
+      title: fromWants.title,
+      description: fromWants.description,
+      type: fromWants.type,
+      skillTags: fromWants.skillTags,
+      matchedTags: [theirTag],
+    };
+  }
+
+  return null;
+}
+
+const PAGE_SIZE = 9;
+const MAX_TOTAL = 45;
 
 router.get("/", requireAuth, async (req: AuthRequest, res) => {
   try {
@@ -225,78 +301,71 @@ router.get("/", requireAuth, async (req: AuthRequest, res) => {
     const listingsByUser = groupListingsByUser(otherListings);
 
     const exactMatches = await getExactMatches(myWantTags, myOfferTags, listingsByUser);
-    const exactMatchUserIds = new Set(exactMatches.map((m) => m.userId));
-    const aiPool = getAiCandidatePool(myWantTags, myOfferTags, listingsByUser, exactMatchUserIds);
+    const exactCards = flattenExactMatches(exactMatches);
 
-    // The absolute ceiling for this request -- never show more than
-    // MAX_TOTAL total, and never try to read past the real exact-match
-    // list or AI pool, whichever is smaller.
-    const totalAvailable = Math.min(exactMatches.length + aiPool.length, MAX_TOTAL);
+    // CHANGED: was exactMatchUserIds (excluded whole people). Now
+    // matchedListingIds (excludes only the specific listings that
+    // already matched exactly), per the fix.
+    const matchedListingIds = getMatchedListingIds(exactMatches);
+    const aiPool = getAiCandidatePool(listingsByUser, matchedListingIds);
 
-    const pageResults: any[] = [];
+    const cardsForPage: MatchCard[] = [];
 
-    // Walk through this page's slice (offset to offset+PAGE_SIZE),
-    // pulling from exactMatches first, then spilling into the AI pool
-    // only once exactMatches is exhausted.
-    for (let i = offset; i < Math.min(offset + PAGE_SIZE, totalAvailable); i++) {
-      if (i < exactMatches.length) {
-        // This index is still within the exact-match list.
-        const match = exactMatches[i];
-        pageResults.push({
-          userId: match.userId,
-          score: match.score,
-          matchType: "exact",
-          matchedTags: match.matchedTags,
-          listings: match.listings,
-        });
-      } else {
-        // This index has moved past exact matches, into the AI pool.
-        const aiIndex = i - exactMatches.length;
+    const exactSliceEnd = Math.min(offset + PAGE_SIZE, exactCards.length);
+    for (let i = offset; i < exactSliceEnd; i++) {
+      cardsForPage.push(exactCards[i]);
+    }
+
+    if (cardsForPage.length < PAGE_SIZE) {
+      const aiPoolStartIndex = Math.max(0, offset - exactCards.length);
+
+      let aiIndex = aiPoolStartIndex;
+      while (cardsForPage.length < PAGE_SIZE && aiIndex < aiPool.length) {
         const candidate = aiPool[aiIndex];
+        aiIndex++;
 
-        if (candidate) {
-          const relatedness = await getAiRelatedness(
+        const relatedness = await getAiRelatedness(
+          myWantTags,
+          myOfferTags,
+          candidate.theirWantTags,
+          candidate.theirOfferTags
+        );
+
+        if (relatedness) {
+          const card = buildAiMatchCard(
+            candidate.userId,
             myWantTags,
-            myOfferTags,
-            candidate.theirWantTags,
-            candidate.theirOfferTags
+            relatedness.myTag,
+            relatedness.theirTag,
+            candidate.theirOfferListings,
+            candidate.theirWantListings
           );
-
-          if (relatedness) {
-            pageResults.push({
-              userId: candidate.userId,
-              score: relatedness.score,
-              matchType: "related",
-              matchedTags: [relatedness.myTag, relatedness.theirTag],
-              listings: candidate.listings,
-            });
+          if (card) {
+            cardsForPage.push(card);
           }
-          // If relatedness is null (AI found nothing related, or the
-          // call failed), we simply don't include this candidate --
-          // same graceful-degradation principle as Phase 2.
         }
       }
     }
 
-    const hasMore = offset + PAGE_SIZE < totalAvailable;
+    const exactRemaining = exactCards.length > offset + PAGE_SIZE;
+    const aiPoolTried = Math.max(0, offset + PAGE_SIZE - exactCards.length);
+    const aiRemaining = aiPoolTried < aiPool.length;
+    const hasMore = (exactRemaining || aiRemaining) && offset + PAGE_SIZE < MAX_TOTAL;
 
-    // Batch-fetch names for everyone on this page in ONE query --
-    // same principle as the trust-score fetch in getExactMatches,
-    // avoiding a separate database call per candidate.
-    const pageUserIds = pageResults.map((m) => m.userId);
+    const pageUserIds = [...new Set(cardsForPage.map((c) => c.userId))];
     const pageUsers = await User.find({ _id: { $in: pageUserIds } }).select("name");
     const nameByUserId: Record<string, string> = {};
     pageUsers.forEach((u) => {
       nameByUserId[(u._id as any).toString()] = u.name;
     });
 
-    const enrichedResults = pageResults.map((m) => ({
-      ...m,
-      name: nameByUserId[m.userId] || "Unknown User",
+    const enrichedCards = cardsForPage.map((c) => ({
+      ...c,
+      posterName: nameByUserId[c.userId] || "Unknown User",
     }));
 
     res.status(200).json({
-      matches: enrichedResults,
+      matches: enrichedCards,
       hasMore,
       nextOffset: offset + PAGE_SIZE,
     });
