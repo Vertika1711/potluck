@@ -14,10 +14,18 @@ interface Listing {
   createdAt: string;
 }
 
+// NEW: minimal shape needed for the "which of my offer listings do I
+// want to attach" selector (Case B) and for counting the target
+// listing owner's offers (Case A's warning).
+interface MyListing {
+  _id: string;
+  userId: string;
+  title: string;
+  type: "offer" | "want";
+  status: string;
+}
+
 function ListingDetail() {
-  // useParams reads the dynamic part of the URL -- if this page is
-  // reached via /listing/abc123, then id === "abc123". This matches
-  // the :id placeholder we'll define in the route in App.tsx.
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -25,6 +33,26 @@ function ListingDetail() {
   const [myId, setMyId] = useState<string | null>(null);
   const [requested, setRequested] = useState(false);
   const [error, setError] = useState("");
+  const [requestError, setRequestError] = useState("");
+
+  // NEW: the status the backend actually returned after sending the
+  // request -- "Requested!" alone no longer says enough, since the
+  // swap could now land on pending, pending_share, or pending_pick
+  // depending on which case this is and whether there's anything to
+  // negotiate with.
+  const [requestStatus, setRequestStatus] = useState<string | null>(null);
+
+  // NEW: Case B only (target listing is an "offer") -- my own active
+  // offer listings, so I can choose which ones to attach when
+  // requesting to learn from someone else's offer.
+  const [myOfferListings, setMyOfferListings] = useState<MyListing[]>([]);
+  const [selectedOfferIds, setSelectedOfferIds] = useState<string[]>([]);
+
+  // NEW: Case A only (target listing is a "want") -- how many active
+  // offer listings the listing OWNER currently has, so we can warn the
+  // sender upfront if there's nothing for the owner to actually share
+  // back, per the agreed design.
+  const [ownerOfferCount, setOwnerOfferCount] = useState<number | null>(null);
 
   const token = localStorage.getItem("token");
 
@@ -48,28 +76,91 @@ function ListingDetail() {
     fetchListing();
   }, [id, token]);
 
-  // Same request-swap logic as Explore.tsx, just living here
-  // now instead -- this page becomes the ONE place swap requests
-  // actually get sent from.
+  // NEW: once we know the listing and who I am, fetch whatever extra
+  // data this specific case needs -- my own offer listings for Case B,
+  // or the owner's offer count for Case A. Only runs once both listing
+  // and myId are available, and only if this isn't my own listing.
+  useEffect(() => {
+    if (!listing || !myId || listing.userId._id === myId) return;
+
+    async function fetchCaseData() {
+      try {
+        if (listing!.type === "offer") {
+          // CASE B: I need to see my OWN active offer listings, to pick
+          // which ones to attach when requesting to learn this.
+          const res = await axios.get("http://localhost:5000/api/listings");
+          const mine = res.data.filter(
+            (l: MyListing) => l.userId === myId && l.type === "offer"
+          );
+          setMyOfferListings(mine);
+        } else {
+          // CASE A: I need to know if the OWNER has anything to trade
+          // back, so I can warn the sender (myself) before sending if not.
+          const res = await axios.get(
+            `http://localhost:5000/api/users/${listing!.userId._id}/profile`
+          );
+          const ownerOffers = (res.data.activeListings || []).filter(
+            (l: MyListing) => l.type === "offer"
+          );
+          setOwnerOfferCount(ownerOffers.length);
+        }
+      } catch (err) {
+        // Non-critical -- if this fails, the warning/selector just
+        // won't show, but the core request flow still works via the
+        // backend's own validation either way.
+      }
+    }
+
+    fetchCaseData();
+  }, [listing, myId]);
+
+  function toggleOfferSelection(listingId: string) {
+    setSelectedOfferIds((prev) =>
+      prev.includes(listingId) ? prev.filter((id) => id !== listingId) : [...prev, listingId]
+    );
+  }
+
+  // UPDATED: now branches by case. Case B sends selectedOfferIds along
+  // with the request; Case A sends just the listingId, same as before.
   async function handleRequestSwap() {
     if (!token || !listing) {
-      setError("You must be logged in to request a swap.");
+      setRequestError("You must be logged in to request a swap.");
       return;
     }
 
     try {
-      await axios.post(
-        "http://localhost:5000/api/swaps",
-        { listingId: listing._id },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const body =
+        listing.type === "offer"
+          ? { listingId: listing._id, offeredListingIds: selectedOfferIds }
+          : { listingId: listing._id };
+
+      const response = await axios.post("http://localhost:5000/api/swaps", body, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
       setRequested(true);
+      setRequestStatus(response.data.status);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response) {
-        setError(err.response.data.error || "Failed to send swap request.");
+        setRequestError(err.response.data.error || "Failed to send swap request.");
       } else {
-        setError("Something went wrong.");
+        setRequestError("Something went wrong.");
       }
+    }
+  }
+
+  // NEW: translates whatever status the backend returned into a
+  // message that actually explains what happens next -- "Requested!"
+  // alone no longer covers every case.
+  function requestStatusMessage(): string {
+    switch (requestStatus) {
+      case "pending_share":
+        return "Request sent! They'll share their offer listings with you next.";
+      case "pending_pick":
+        return "Request sent! They'll pick what they'd like to learn from your offered skills.";
+      case "pending":
+      default:
+        return "Request sent! They'll get a simple accept/reject option.";
     }
   }
 
@@ -100,20 +191,13 @@ function ListingDetail() {
     );
   }
 
-  // listing.userId is the POPULATED object ({ _id, name }) since the
-  // backend route uses .populate() -- so listing.userId._id is what
-  // we compare against myId, and listing.userId.name is what we display.
   const isOwnListing = myId === listing.userId._id;
 
   return (
-    // Same full-bleed pattern as every other restyled page (decisions-log.md #27).
     <div className="w-screen relative left-1/2 -ml-[50vw] min-h-screen bg-[#efe0c0] font-sans">
       <Navbar />
 
       <div className="max-w-2xl mx-auto px-4 sm:px-8 py-8">
-        {/* navigate(-1) returns to whatever page the person actually
-            came from (Explore, a public profile, Suggested Matches,
-            etc.), instead of always assuming Explore specifically. */}
         <button
           onClick={() => navigate(-1)}
           className="block mb-6 px-4 py-2 font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]"
@@ -133,9 +217,6 @@ function ListingDetail() {
             {listing.title}
           </h2>
 
-          {/* Same type badge style as Explore's cards, so a listing looks
-              consistent whether you're browsing the grid or viewing this
-              detail page. */}
           <span
             className="self-start text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5"
             style={
@@ -147,9 +228,6 @@ function ListingDetail() {
             {listing.type}
           </span>
 
-          {/* Grouped into one div with a small internal gap, so "Posted
-              by" and "Posted on" read as one related unit, distinct from
-              the description below. */}
           <div className="flex flex-col gap-0.5">
             <p className="text-[#4a3620]">
               Posted by{" "}
@@ -157,28 +235,15 @@ function ListingDetail() {
                 {listing.userId.name}
               </Link>
             </p>
-
-            {/* Posting date. Assumes GET /api/listings/:id returns
-                createdAt (it does on every other Listing shape in the
-                app, e.g. Explore.tsx's) -- worth a quick Postman check
-                on this specific route if the date doesn't show up
-                correctly. */}
             <p className="text-sm text-[#7a6a58]">
               Posted on {new Date(listing.createdAt).toLocaleDateString()}
             </p>
           </div>
 
-          {/* Extra breathing room above the description, beyond the
-              card's normal gap-3. Uses an inline style instead of a
-              Tailwind mt-* class -- index.css's unlayered
-              `p { margin: 0; }` rule would otherwise silently zero out
-              a Tailwind margin class on a <p> (decisions-log.md #26,
-              #29, #35). */}
           <p className="text-[#4a3620] leading-relaxed" style={{ marginTop: "8px" }}>
             {listing.description}
           </p>
 
-          {/* Tags as pill badges, matching Explore's cards. */}
           <div className="flex flex-wrap gap-1">
             {listing.skillTags.map((tag) => (
               <span
@@ -190,24 +255,76 @@ function ListingDetail() {
             ))}
           </div>
 
-          {!isOwnListing && myId && (
+          {!isOwnListing && myId && requested && (
+            <div
+              className="mt-2 pl-3 py-2 rounded text-sm"
+              style={{ borderLeft: "4px solid #4a7c59", backgroundColor: "#e3ede3", color: "#4a3620" }}
+            >
+              {requestStatusMessage()}
+            </div>
+          )}
+
+          {!isOwnListing && myId && !requested && listing.type === "offer" && (
+            <div className="mt-2 flex flex-col gap-2">
+              {myOfferListings.length > 0 ? (
+                <>
+                  <p className="font-semibold text-[#4a3620]">
+                    Select which of your offer listings you'd like to offer in return:
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {myOfferListings.map((l) => (
+                      <label key={l._id} className="flex items-center gap-2 text-[#4a3620]">
+                        <input
+                          type="checkbox"
+                          checked={selectedOfferIds.includes(l._id)}
+                          onChange={() => toggleOfferSelection(l._id)}
+                          className="accent-[#8b5a2b] w-4 h-4"
+                        />
+                        {l.title}
+                      </label>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div
+                  className="pl-3 py-2 rounded text-sm"
+                  style={{ borderLeft: "4px solid #8b5a2b", backgroundColor: "#f1e5cc", color: "#4a3620" }}
+                >
+                  You have no active offer listings to attach. If you send this request, they'll get a simple
+                  accept/reject option instead of the full negotiation.{" "}
+                  <Link to="/create-listing" className="font-semibold text-[#8b5a2b] hover:underline">
+                    Create one first →
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!isOwnListing && myId && !requested && listing.type === "want" && ownerOfferCount === 0 && (
+            <div
+              className="mt-2 pl-3 py-2 rounded text-sm"
+              style={{ borderLeft: "4px solid #8b5a2b", backgroundColor: "#f1e5cc", color: "#4a3620" }}
+            >
+              This person currently has no offer listings to trade back. If you send this request, they'll get a
+              simple accept/reject option instead of the full negotiation.
+            </div>
+          )}
+
+          {!isOwnListing && myId && !requested && requestError && (
+            <p className="text-sm text-red-700 bg-red-50 border border-red-300 rounded px-3 py-2">
+              {requestError}
+            </p>
+          )}
+
+          {!isOwnListing && myId && !requested && (
             <button
               onClick={handleRequestSwap}
-              disabled={requested}
-              className={
-                "mt-2 self-start px-6 py-2 font-semibold rounded transition-colors " +
-                (requested
-                  ? "bg-[#e3ede3] text-[#4a7c59] cursor-default"
-                  : "bg-[#8b5a2b] text-[#f7ecd8] hover:bg-[#7a4a22]")
-              }
+              className="mt-2 self-start px-6 py-2 font-semibold rounded bg-[#8b5a2b] text-[#f7ecd8] hover:bg-[#7a4a22] transition-colors"
             >
-              {requested ? "Requested!" : "Request Swap"}
+              Request Swap
             </button>
           )}
 
-          {/* Previously, a logged-out visitor just saw nothing at all
-              where the button would be -- no indication that logging in
-              would let them take this action. */}
           {!isOwnListing && !myId && (
             <p className="text-[#4a3620]" style={{ marginTop: "12px" }}>
               <Link to="/login" className="font-semibold text-[#8b5a2b] hover:underline">

@@ -113,7 +113,7 @@ function CreateListing() {
         }
       );
 
-      navigate("/profile"); // redirect somewhere sensible after success
+      navigate("/my-listings"); // redirect to My Listings so the new listing is immediately visible
     } catch (err) {
       if (axios.isAxiosError(err) && err.response) {
         setError(err.response.data.error || "Failed to create listing.");
