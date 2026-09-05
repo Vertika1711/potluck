@@ -34,6 +34,27 @@ function MyListings() {
   // NEW: type filter, same All/Offers/Wants pattern as Explore.
   const [typeFilter, setTypeFilter] = useState<"all" | "offer" | "want">("all");
 
+  // NEW: Active/Closed status filter -- a second, independent filter
+  // dimension alongside typeFilter, not mutually exclusive with it (a
+  // user can filter to "Offers" AND "Closed" at the same time). Same
+  // pill-button pattern as typeFilter, just one more row.
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "closed">("all");
+
+  // NEW: Newest/Oldest sort toggle. Defaults to "newest", matching what
+  // GET /api/listings already returns (newest first) -- so this
+  // doesn't change anything visually until the user explicitly picks
+  // "Oldest First".
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+
+  // NEW: pagination, same "reveal more of what's already fetched"
+  // pattern as Explore.tsx's visibleCount -- no extra network request,
+  // just slicing further into an already-filtered/sorted array. Page
+  // size of 6 (smaller than Explore's 12) since each card here is a
+  // full-width block with much more content per card (tags, dates,
+  // three action buttons, an inline edit form) than Explore's compact
+  // grid cards.
+  const [visibleCount, setVisibleCount] = useState(6);
+
   const token = localStorage.getItem("token");
 
   // NEW: protected-route check, same pattern as Profile.tsx/CreateListing.tsx --
@@ -78,9 +99,34 @@ function MyListings() {
 
   // Derived, same pattern as Explore's filteredListings -- not its own
   // separate state, just a filtered view of the fetched listings.
-  const filteredListings = listings.filter(
-    (listing) => typeFilter === "all" || listing.type === typeFilter
-  );
+  // UPDATED: now also filters by statusFilter (a second, independent
+  // dimension from typeFilter) and sorts by createdAt, before
+  // pagination slices the final visible page below. Order matters:
+  // filter both dimensions first (so counts/pagination reflect the
+  // actually-narrowed set), sort second, slice last.
+  const filteredListings = listings
+    .filter((listing) => typeFilter === "all" || listing.type === typeFilter)
+    .filter((listing) => statusFilter === "all" || listing.status === statusFilter)
+    .sort((a, b) => {
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+      return sortOrder === "newest" ? bTime - aTime : aTime - bTime;
+    });
+
+  // NEW: whenever any filter or the sort order changes, reset back to
+  // showing just the first page -- same reasoning as Explore.tsx's
+  // equivalent effect: otherwise a newly narrowed/reordered list could
+  // leave "Load More" in a confusing state relative to what's actually
+  // being shown.
+  useEffect(() => {
+    setVisibleCount(6);
+  }, [typeFilter, statusFilter, sortOrder]);
+
+  // NEW: only this many of the filtered+sorted results are actually
+  // rendered -- "Load More" increases visibleCount, revealing more of
+  // what's already in memory rather than triggering a new fetch, same
+  // principle as Explore.tsx's visibleListings.
+  const visibleListings = filteredListings.slice(0, visibleCount);
 
   // Called when clicking "Edit" on a specific listing card --
   // pre-fills the edit form with that listing's current values.
@@ -189,22 +235,70 @@ function MyListings() {
           </p>
         )}
 
-        {/* NEW: type filter, matching Explore's pattern. */}
-        <div className="flex gap-3 mb-6">
-          {(["all", "offer", "want"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTypeFilter(t)}
-              className={
-                "px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors " +
-                (typeFilter === t
-                  ? "bg-[#8b5a2b] text-[#f7ecd8] border-[#8b5a2b]"
-                  : "bg-transparent text-[#4a3620] border-[#c9a06c] hover:bg-[#f1e5cc]")
-              }
-            >
-              {t === "all" ? "All" : t === "offer" ? "Offers" : "Wants"}
-            </button>
-          ))}
+        {/* NEW: type filter pills (left) and the Status/Sort dropdowns
+            (right) share one flex row on wider screens -- justify-between
+            pushes them to opposite ends. flex-wrap means that once the
+            screen narrows past a certain point, the dropdown group
+            naturally drops to its own line below the pills, rather than
+            needing a separate mobile-specific layout. */}
+        <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+          {/* Type filter, matching Explore's pattern -- kept as pills
+              since this is the primary, most-used filter and already
+              matches the established visual language across the app. */}
+          <div className="flex gap-3 flex-wrap">
+            {(["all", "offer", "want"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTypeFilter(t)}
+                className={
+                  "px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors " +
+                  (typeFilter === t
+                    ? "bg-[#8b5a2b] text-[#f7ecd8] border-[#8b5a2b]"
+                    : "bg-transparent text-[#4a3620] border-[#c9a06c] hover:bg-[#f1e5cc]")
+                }
+              >
+                {t === "all" ? "All" : t === "offer" ? "Offers" : "Wants"}
+              </button>
+            ))}
+          </div>
+
+          {/* Status filter and Sort order, combined into one compact
+              group of two dropdown selects instead of separate pill
+              rows -- dropdowns read as "settings" rather than "primary
+              navigation," which helps them feel visually distinct from
+              the Type pills rather than competing with them. */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <label htmlFor="statusFilter" className="text-sm text-[#7a6a58]">
+                Status:
+              </label>
+              <select
+                id="statusFilter"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "closed")}
+                className="px-3 py-1.5 rounded-full text-sm font-semibold border border-[#c9a06c] bg-[#f7ecd8] text-[#4a3620] focus:outline-none focus:border-[#8b5a2b] cursor-pointer"
+              >
+                <option value="all">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="closed">Closed</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label htmlFor="sortOrder" className="text-sm text-[#7a6a58]">
+                Sort:
+              </label>
+              <select
+                id="sortOrder"
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as "newest" | "oldest")}
+                className="px-3 py-1.5 rounded-full text-sm font-semibold border border-[#c9a06c] bg-[#f7ecd8] text-[#4a3620] focus:outline-none focus:border-[#8b5a2b] cursor-pointer"
+              >
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         {/* Same accent-box style as Home.tsx's About section (left
@@ -228,6 +322,16 @@ function MyListings() {
           </p>
         )}
 
+        {/* NEW: friendly message when a filter combination matches
+            nothing, distinct from "you have zero listings at all" above --
+            otherwise a narrow filter could look identical to having no
+            listings whatsoever. */}
+        {listings.length > 0 && filteredListings.length === 0 && (
+          <p className="text-center text-[#7a6a58]">
+            No listings match the selected filters.
+          </p>
+        )}
+
         {/* NEW: a stacked single-column list, not a multi-column grid
             like Explore's -- deliberately different, since one card can
             expand into an inline edit form here (with full-width inputs
@@ -235,7 +339,7 @@ function MyListings() {
             the same row to match the tallest one, making unrelated
             sibling cards look oddly tall while one is being edited. */}
         <div className="flex flex-col gap-4">
-          {filteredListings.map((listing) => (
+          {visibleListings.map((listing) => (
             <div key={listing._id} className="bg-white/60 backdrop-blur-sm rounded-lg p-5">
               {editingId === listing._id ? (
                 // EDIT MODE
@@ -436,6 +540,30 @@ function MyListings() {
             </div>
           ))}
         </div>
+
+        {/* NEW: Load More button, same pattern as Explore.tsx -- only
+            shown when there are more filtered/sorted results beyond
+            what's currently visible. No network request happens here,
+            just revealing more of the already-fetched listings array. */}
+        {visibleCount < filteredListings.length && (
+          <div className="flex justify-center mt-6">
+            <button
+              onClick={() => setVisibleCount((c) => c + 6)}
+              className="px-6 py-2 font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]"
+            >
+              Load More
+            </button>
+          </div>
+        )}
+
+        {/* NEW: end-of-list message, shown once every filtered/sorted
+            result is already visible -- same pattern as Explore.tsx and
+            Suggested Matches. */}
+        {visibleListings.length > 0 && visibleCount >= filteredListings.length && (
+          <p className="text-center text-[#7a6a58] mt-6">
+            That's all your listings for this filter.
+          </p>
+        )}
       </div>
     </div>
   );

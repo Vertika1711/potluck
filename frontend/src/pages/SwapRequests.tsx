@@ -43,6 +43,15 @@ interface ContactInfo {
 const EXPIRY_DAYS = 7;
 const UNFINISHED_STATUSES: Swap["status"][] = ["pending", "pending_share", "pending_pick", "pending_confirmation"];
 
+// NEW: the status filter's own option type -- distinct from Swap["status"]
+// itself, since "pending" here is a GROUPING that covers all four
+// UNFINISHED_STATUSES sub-stages (pending/pending_share/pending_pick/
+// pending_confirmation), not a literal single status value. To a user,
+// all four already look identical (same amber badge, same "waiting"
+// language) -- filtering by each sub-stage individually would expose an
+// internal distinction the rest of the page deliberately doesn't surface.
+type StatusFilterOption = "all" | "pending" | "accepted" | "completed" | "rejected" | "cancelled";
+
 function SwapRequests() {
   const navigate = useNavigate();
   const [incoming, setIncoming] = useState<Swap[]>([]);
@@ -50,6 +59,17 @@ function SwapRequests() {
   const [error, setError] = useState("");
 
   const [activeTab, setActiveTab] = useState<"incoming" | "outgoing">("incoming");
+
+  // NEW: status filter, applied on top of whichever tab (Incoming/
+  // Outgoing) is currently active -- the two filters are independent
+  // dimensions, same relationship as MyListings' type + status filters.
+  const [statusFilter, setStatusFilter] = useState<StatusFilterOption>("all");
+
+  // NEW: pagination, same "reveal more of what's already fetched"
+  // pattern as Explore.tsx/MyListings.tsx. Page size of 6, matching
+  // MyListings' choice, since these cards are similarly tall (multiple
+  // action buttons, sometimes an inline form).
+  const [visibleCount, setVisibleCount] = useState(6);
 
   const [listingTitles, setListingTitles] = useState<Record<string, string>>({});
   const [myOfferListings, setMyOfferListings] = useState<Listing[]>([]);
@@ -289,6 +309,16 @@ function SwapRequests() {
     const msElapsed = Date.now() - new Date(swap.statusUpdatedAt).getTime();
     const msRemaining = EXPIRY_DAYS * 24 * 60 * 60 * 1000 - msElapsed;
     return Math.max(0, Math.ceil(msRemaining / (24 * 60 * 60 * 1000)));
+  }
+
+  // NEW: checks whether a swap matches the currently-selected status
+  // filter. "pending" is a GROUPING covering all four unfinished
+  // sub-statuses (see StatusFilterOption's comment above) -- every
+  // other option maps to exactly one literal Swap["status"] value.
+  function matchesStatusFilter(swap: Swap): boolean {
+    if (statusFilter === "all") return true;
+    if (statusFilter === "pending") return UNFINISHED_STATUSES.includes(swap.status);
+    return swap.status === statusFilter;
   }
 
   function renderSwapCard(swap: Swap, isIncoming: boolean) {
@@ -576,7 +606,24 @@ function SwapRequests() {
     );
   }
 
-  const visibleSwaps = activeTab === "incoming" ? incoming : outgoing;
+  // UPDATED: was just activeTab === "incoming" ? incoming : outgoing.
+  // Now also runs the status filter on top of the tab selection --
+  // both are independent dimensions, same relationship as MyListings'
+  // type + status filters.
+  const filteredSwaps = (activeTab === "incoming" ? incoming : outgoing).filter(matchesStatusFilter);
+
+  // NEW: whenever the active tab or the status filter changes, reset
+  // back to the first page -- same reasoning as Explore.tsx/MyListings.tsx's
+  // equivalent effects, so "Load More" never ends up in a confusing
+  // state relative to a newly-narrowed list.
+  useEffect(() => {
+    setVisibleCount(6);
+  }, [activeTab, statusFilter]);
+
+  // NEW: only this many of the filtered results are actually rendered --
+  // "Load More" increases visibleCount, revealing more of what's
+  // already in memory, no new fetch.
+  const visibleSwaps = filteredSwaps.slice(0, visibleCount);
 
   return (
     <div className="w-screen relative left-1/2 -ml-[50vw] min-h-screen bg-[#efe0c0] font-sans">
@@ -601,40 +648,111 @@ function SwapRequests() {
           </p>
         )}
 
-        <div className="flex justify-center gap-2 mb-6">
-          <button
-            onClick={() => setActiveTab("incoming")}
-            className={
-              "px-5 py-2 rounded-full font-semibold border-2 transition-colors " +
-              (activeTab === "incoming"
-                ? "bg-[#4a7c59] text-white border-[#4a7c59]"
-                : "bg-transparent text-[#4a3620] border-[#c9a06c] hover:bg-[#f1e5cc]")
-            }
-          >
-            Incoming ({incoming.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("outgoing")}
-            className={
-              "px-5 py-2 rounded-full font-semibold border-2 transition-colors " +
-              (activeTab === "outgoing"
-                ? "bg-[#4a7c59] text-white border-[#4a7c59]"
-                : "bg-transparent text-[#4a3620] border-[#c9a06c] hover:bg-[#f1e5cc]")
-            }
-          >
-            Outgoing ({outgoing.length})
-          </button>
+        {/* UPDATED: the Incoming/Outgoing tabs (unchanged) now share a
+            row with the new status filter dropdown, using the same
+            "pills on the left, settings dropdown on the right"
+            layout established on MyListings.tsx -- flex-wrap lets the
+            dropdown drop to its own line on narrow screens. */}
+        <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab("incoming")}
+              className={
+                "px-5 py-2 rounded-full font-semibold border-2 transition-colors " +
+                (activeTab === "incoming"
+                  ? "bg-[#4a7c59] text-white border-[#4a7c59]"
+                  : "bg-transparent text-[#4a3620] border-[#c9a06c] hover:bg-[#f1e5cc]")
+              }
+            >
+              {/* UPDATED: count now reflects the active statusFilter,
+                  not just the raw incoming array length -- so switching
+                  to "Completed" shows how many of your INCOMING requests
+                  are completed, not the total regardless of filter. */}
+              Incoming ({incoming.filter(matchesStatusFilter).length})
+            </button>
+            <button
+              onClick={() => setActiveTab("outgoing")}
+              className={
+                "px-5 py-2 rounded-full font-semibold border-2 transition-colors " +
+                (activeTab === "outgoing"
+                  ? "bg-[#4a7c59] text-white border-[#4a7c59]"
+                  : "bg-transparent text-[#4a3620] border-[#c9a06c] hover:bg-[#f1e5cc]")
+              }
+            >
+              {/* Same as Incoming above -- both counts always reflect
+                  the current status filter, even for the tab you're not
+                  currently viewing, so you can see at a glance whether
+                  the other tab has anything worth checking under this
+                  filter without switching to it. */}
+              Outgoing ({outgoing.filter(matchesStatusFilter).length})
+            </button>
+          </div>
+
+          {/* NEW: status filter dropdown -- "Pending" groups all four
+              unfinished sub-statuses together (see StatusFilterOption's
+              comment), since the page already treats them as visually
+              identical everywhere else. */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="statusFilter" className="text-sm text-[#7a6a58]">
+              Status:
+            </label>
+            <select
+              id="statusFilter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilterOption)}
+              className="px-3 py-1.5 rounded-full text-sm font-semibold border border-[#c9a06c] bg-[#f7ecd8] text-[#4a3620] focus:outline-none focus:border-[#8b5a2b] cursor-pointer"
+            >
+              <option value="all">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="accepted">Accepted</option>
+              <option value="completed">Completed</option>
+              <option value="rejected">Rejected</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
         </div>
 
-        {visibleSwaps.length === 0 && (
+        {/* UPDATED: was visibleSwaps.length === 0 checking the tab alone.
+            Now distinguishes "this tab genuinely has nothing" from "the
+            status filter matched nothing" -- otherwise a narrow filter
+            could look identical to having zero requests at all. */}
+        {filteredSwaps.length === 0 && (
           <p className="text-center text-[#7a6a58]">
-            {activeTab === "incoming" ? "No incoming requests." : "No outgoing requests."}
+            {(activeTab === "incoming" ? incoming : outgoing).length === 0
+              ? activeTab === "incoming"
+                ? "No incoming requests."
+                : "No outgoing requests."
+              : "No requests match the selected status filter."}
           </p>
         )}
 
         <div className="flex flex-col gap-4">
           {visibleSwaps.map((swap) => renderSwapCard(swap, activeTab === "incoming"))}
         </div>
+
+        {/* NEW: Load More button, same pattern as Explore.tsx/MyListings.tsx --
+            only shown when there are more filtered results beyond
+            what's currently visible. No network request, just revealing
+            more of the already-fetched incoming/outgoing arrays. */}
+        {visibleCount < filteredSwaps.length && (
+          <div className="flex justify-center mt-6">
+            <button
+              onClick={() => setVisibleCount((c) => c + 6)}
+              className="px-6 py-2 font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]"
+            >
+              Load More
+            </button>
+          </div>
+        )}
+
+        {/* NEW: end-of-list message, shown once every filtered swap is
+            already visible -- same pattern as Explore.tsx/MyListings.tsx/
+            Suggested Matches. */}
+        {visibleSwaps.length > 0 && visibleCount >= filteredSwaps.length && (
+          <p className="text-center text-[#7a6a58] mt-6">
+            That's all your requests for this view.
+          </p>
+        )}
       </div>
     </div>
   );

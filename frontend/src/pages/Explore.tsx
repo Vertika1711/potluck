@@ -329,6 +329,16 @@ function Explore() {
             </button>
           </div>
         )}
+
+        {/* NEW: end-of-list message, shown once every filtered result is
+            already visible -- mirrors Suggested Matches' equivalent
+            message, so every paginated page in the app confirms the
+            same way that scrolling further won't reveal anything new. */}
+        {visibleListings.length > 0 && visibleCount >= filteredListings.length && (
+          <p className="text-center text-[#7a6a58] mt-8">
+            That's all the listings available.
+          </p>
+        )}
         </>
         )}
 
