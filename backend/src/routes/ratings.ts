@@ -119,10 +119,26 @@ router.get("/user/:userId", async (req, res) => {
       };
     }
 
-    const allMatching = await Rating.find(query).populate("raterId", "name");
-    // .populate("raterId", "name") -- same technique as listings.ts's
-    // single-listing route -- shows WHO left each review by name,
-    // without exposing their email or other private fields.
+    // UPDATED: now also populates avatarId (so the frontend can show
+    // the reviewer's avatar, same getAvatarSrc() used everywhere else),
+    // and does a NESTED populate through swapId to pull in exactly
+    // enough swap/listing data for the frontend to derive which skill
+    // was taught vs. learned in that exchange. No new fields needed on
+    // Rating OR Swap -- swapId was already mandatory on every rating
+    // (decisions-log.md #3), this just surfaces more of what was
+    // already there. listingId/selectedListingId are populated down to
+    // just their title, keeping the response lean rather than
+    // returning full listing documents nobody asked for.
+    const allMatching = await Rating.find(query)
+      .populate("raterId", "name avatarId")
+      .populate({
+        path: "swapId",
+        select: "listingType requesterId receiverId listingId selectedListingId",
+        populate: [
+          { path: "listingId", select: "title" },
+          { path: "selectedListingId", select: "title" },
+        ],
+      });
 
     if (sort === "helpful") {
       // Most helpful first -- more helpfulUserIds entries = ranked higher.

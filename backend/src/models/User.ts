@@ -14,6 +14,13 @@ export interface IUser extends Document {
   phoneVisible: boolean;
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
+  // NEW: which of the 18 predefined illustrated avatars this user has
+  // chosen (an index into the frontend's AVATARS array, 0-17).
+  // Optional/undefined means "hasn't picked one" -- the frontend falls
+  // back to a deterministic default (hashed from the user's own _id)
+  // via getAvatarSrc() in utils/avatar.ts, so every user always has
+  // SOME avatar even before ever visiting Edit Profile.
+  avatarId?: number;
 }
 
 // The actual schema — this is what Mongoose uses to validate
@@ -50,6 +57,18 @@ const UserSchema = new Schema<IUser>({
   resetPasswordExpires: {
     type: Date,
     required: false, // set alongside the token, cleared once used or expired
+  },
+  // NEW: optional -- undefined until the user explicitly picks one via
+  // Edit Profile. min/max match the frontend's 18-avatar set (indices
+  // 0-17); kept as a plain Number rather than an enum since the count
+  // may grow later and a range check is simpler to adjust than an enum
+  // list. IMPORTANT: if the frontend's AVATARS array in utils/avatar.ts
+  // ever changes length, this max needs updating to match.
+  avatarId: {
+    type: Number,
+    required: false,
+    min: 0,
+    max: 17,
   },
 });
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import axios from "axios";
+import { getAvatarSrc } from "../utils/avatar";
 
 interface PublicProfileData {
   name: string;
@@ -8,6 +9,7 @@ interface PublicProfileData {
   completedSwapCount: number;
   joinedAt: string;
   activeListings: Listing[];
+  avatarId?: number; // NEW -- see Profile.tsx's User interface for the same field
 }
 
 interface Listing {
@@ -266,22 +268,34 @@ function PublicProfile() {
             hardcoded destination. */}
         <button
           onClick={() => navigate(-1)}
-          className="block mb-6 px-4 py-2 font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]"
+          className="block mb-3 px-4 py-2 font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]"
         >
           ← Back
         </button>
 
-        <h1
-          className="mb-4 text-center"
-          style={{
-            fontFamily: "'Playfair Display', serif",
-            fontWeight: 900,
-            color: "#4a7c59",
-            fontSize: "clamp(1.75rem, 5vw, 2.25rem)",
-          }}
-        >
-          {profile.name}
-        </h1>
+        {/* NEW: avatar shown above the name -- centered, matching this
+            page's centered heading layout (unlike Profile.tsx's
+            left-aligned identity card, which puts the avatar beside
+            the name instead). */}
+        <div className="flex flex-col items-center gap-0 mb-4">
+          <img
+            src={getAvatarSrc(userId!, profile.avatarId)}
+            alt=""
+            className="w-32 h-32 rounded-full object-cover"
+            style={{ border: "4px solid #c9a06c" }}
+          />
+          <h1
+            className="text-center"
+            style={{
+              fontFamily: "'Playfair Display', serif",
+              fontWeight: 900,
+              color: "#4a7c59",
+              fontSize: "clamp(1.75rem, 5vw, 2.25rem)",
+            }}
+          >
+            {profile.name}
+          </h1>
+        </div>
 
         {/* NEW: trust score / completed swaps / joined date as a small,
             visually-distinct stat row -- same translucent card

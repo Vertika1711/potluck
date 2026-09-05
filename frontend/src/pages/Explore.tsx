@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../components/Navbar";
+import { getAvatarSrc } from "../utils/avatar";
 
 // Describes the shape of one listing coming back from the backend,
 // so TypeScript knows what fields we can safely use below.
@@ -25,6 +26,7 @@ interface UserSearchResult {
   name: string;
   trustScore?: number;
   createdAt: string;
+  avatarId?: number; // NEW -- see Profile.tsx's User interface for the same field
 }
 
 function Explore() {
@@ -390,18 +392,36 @@ function Explore() {
                 "entire card is clickable" pattern as the listing cards. */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
               {userResults.map((user) => (
+                // UPDATED: switched from a stacked flex-col layout to a
+                // flex-row -- avatar on the left, details on the right --
+                // now that each person has a real illustrated avatar to
+                // show, rather than just text. items-center keeps the
+                // avatar vertically centered against the (usually taller)
+                // text block beside it.
                 <Link
                   key={user._id}
                   to={`/profile/${user._id}`}
-                  className="bg-white/60 backdrop-blur-sm rounded-lg p-5 flex flex-col gap-1 hover:bg-white/80 transition-colors"
+                  className="bg-white/60 backdrop-blur-sm rounded-lg p-5 flex items-center gap-4 hover:bg-white/80 transition-colors"
                 >
-                  <span className="text-lg font-semibold text-[#4a3620]">{user.name}</span>
-                  {typeof user.trustScore === "number" && (
-                    <span className="text-sm text-[#7a6a58]">Trust Score: {user.trustScore.toFixed(1)}</span>
-                  )}
-                  <span className="text-xs text-[#a99b82]">
-                    Joined {new Date(user.createdAt).toLocaleDateString()}
-                  </span>
+                  {/* Sized larger than the small inline avatars used
+                      elsewhere (e.g. Profile.tsx's 14/PublicProfile's 20)
+                      since this card has room to spare and the avatar is
+                      effectively the card's main visual anchor now. */}
+                  <img
+                    src={getAvatarSrc(user._id, user.avatarId)}
+                    alt=""
+                    className="w-16 h-16 rounded-full object-cover shrink-0"
+                    style={{ border: "3px solid #c9a06c" }}
+                  />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-lg font-semibold text-[#4a3620]">{user.name}</span>
+                    {typeof user.trustScore === "number" && (
+                      <span className="text-sm text-[#7a6a58]">Trust Score: {user.trustScore.toFixed(1)}</span>
+                    )}
+                    <span className="text-xs text-[#a99b82]">
+                      Joined {new Date(user.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
                 </Link>
               ))}
             </div>

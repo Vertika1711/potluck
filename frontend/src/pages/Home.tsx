@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import hero from "../assets/hero.png";
 import aboutImage from "../assets/about-image.png";
 import flowImage from "../assets/flow-image.png";
 import flowSteps from "../assets/flow-steps.png";
+import { useMyAvatar } from "../hooks/useMyAvatar";
 
 function Home() {
   const navigate = useNavigate();
@@ -21,14 +22,14 @@ function Home() {
   // they collapse behind this hamburger toggle instead of overflowing.
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  useEffect(() => {
-    // If already logged in, skip the landing page entirely -- there's
-    // no reason a signed-in user should see "Log In / Sign Up" buttons.
-    const token = localStorage.getItem("token");
-    if (token) {
-      navigate("/profile");
-    }
-  }, [navigate]);
+  // UPDATED: Home no longer redirects a logged-in visitor away --
+  // reversing the earlier decision (decisions-log #41) that assumed
+  // Home was only ever for logged-out visitors. A logged-in user can
+  // now genuinely view Home; the header's right-side links and the
+  // "Get Started" button both become login-aware instead (below),
+  // rather than the page bouncing them elsewhere before they see it.
+  const token = localStorage.getItem("token");
+  const avatarSrc = useMyAvatar(token);
 
   function scrollToHome() {
     homeRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -45,17 +46,60 @@ function Home() {
     setMobileMenuOpen(false);
   }
 
+  // NEW: "Get Started" now goes to /profile if already logged in,
+  // rather than sending an existing user back through Signup.
+  function handleGetStarted() {
+    navigate(token ? "/profile" : "/signup");
+  }
+
+  // NEW: the right-side auth links, shared between the desktop nav and
+  // the mobile dropdown so both stay in sync without duplicating the
+  // logged-in/logged-out branching twice. onNavigate additionally
+  // closes the mobile menu, same pattern Navbar.tsx uses.
+  function renderAuthLinks(onNavigate?: () => void) {
+    if (token) {
+      return (
+        <Link to="/profile" onClick={onNavigate} aria-label="My Profile" title="My Profile">
+          {avatarSrc ? (
+            <img
+              src={avatarSrc}
+              alt=""
+              className="w-9 h-9 rounded-full object-cover"
+              style={{ border: "3px solid #c9a06c" }}
+            />
+          ) : (
+            <span className="block w-9 h-9 rounded-full" style={{ backgroundColor: "#c9a06c" }} />
+          )}
+        </Link>
+      );
+    }
+
+    return (
+      <>
+        <Link to="/login" onClick={onNavigate}>
+          <button className="px-4 py-2 border border-[#8b5a2b] text-[#4a3620] rounded hover:bg-[#efe0c0]">
+            Log In
+          </button>
+        </Link>
+        <Link to="/signup" onClick={onNavigate}>
+          <button className="px-4 py-2 bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]">
+            Sign Up
+          </button>
+        </Link>
+      </>
+    );
+  }
+
   return (
     // w-screen + relative/left-1/2/-ml-[50vw] is the "full-bleed breakout"
     // trick -- it lets this div span the ENTIRE browser width, ignoring
     // the app's normal centered 1126px column (set in index.css's #root).
     <div className="w-screen relative left-1/2 -ml-[50vw] bg-[#efe0c0] font-sans">
 
-      {/* Sticky header. NEW: `relative` added so the mobile dropdown
-          (below) can position itself directly beneath the header via
-          `absolute top-full`. Padding now scales down on small screens
-          (px-4 on mobile vs. px-8 on desktop) since there's less width
-          to spare. */}
+      {/* Sticky header. `relative` lets the mobile dropdown (below)
+          position itself directly beneath the header via `absolute
+          top-full`. Padding scales down on small screens (px-4 on
+          mobile vs. px-8 on desktop) since there's less width to spare. */}
       <header className="sticky top-0 z-50 bg-[#f7ecd8] border-b border-[#c9a06c] px-4 sm:px-8 py-4 flex justify-between items-center relative">
         <button
           onClick={scrollToHome}
@@ -65,8 +109,9 @@ function Home() {
           Potluck
         </button>
 
-        {/* Desktop/tablet-landscape nav -- unchanged content and styling,
-            just hidden below `lg` (1024px) where it no longer fits. */}
+        {/* Desktop/tablet-landscape nav -- unchanged Home/About/Flow/
+            Explore, now with login-aware auth links via renderAuthLinks
+            instead of hardcoded Log In/Sign Up. */}
         <nav className="hidden lg:flex items-center gap-6 font-semibold">
           <button onClick={scrollToHome} className="text-[#4a3620] hover:text-[#8b5a2b]">
             Home
@@ -80,22 +125,13 @@ function Home() {
           <Link to="/explore" className="text-[#4a3620] hover:text-[#8b5a2b]">
             Explore
           </Link>
-          <Link to="/login">
-            <button className="px-4 py-2 border border-[#8b5a2b] text-[#4a3620] rounded hover:bg-[#efe0c0]">
-              Log In
-            </button>
-          </Link>
-          <Link to="/signup">
-            <button className="px-4 py-2 bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]">
-              Sign Up
-            </button>
-          </Link>
+          {renderAuthLinks()}
         </nav>
 
-        {/* NEW: Hamburger toggle -- only shown below `lg`. Plain inline
+        {/* Hamburger toggle -- only shown below `lg`. Plain inline
             SVG (no icon library dependency), swaps to an "X" when open.
             This is the "genuinely necessary" mobile nav solution: same
-            6 destinations, none removed, just collapsed into a menu. */}
+            destinations, none removed, just collapsed into a menu. */}
         <button
           className="lg:hidden text-[#4a3620]"
           onClick={() => setMobileMenuOpen((open) => !open)}
@@ -110,8 +146,8 @@ function Home() {
           </svg>
         </button>
 
-        {/* NEW: Mobile dropdown panel -- same 6 links as the desktop nav,
-            same colors/typography, just stacked vertically and only
+        {/* Mobile dropdown panel -- same links as the desktop nav, same
+            colors/typography, just stacked vertically and only
             rendered when open. Positioned directly under the header via
             `absolute top-full`, spanning the full header width. */}
         {mobileMenuOpen && (
@@ -128,16 +164,7 @@ function Home() {
             <Link to="/explore" onClick={() => setMobileMenuOpen(false)} className="text-[#4a3620] hover:text-[#8b5a2b]">
               Explore
             </Link>
-            <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
-              <button className="px-4 py-2 border border-[#8b5a2b] text-[#4a3620] rounded hover:bg-[#efe0c0]">
-                Log In
-              </button>
-            </Link>
-            <Link to="/signup" onClick={() => setMobileMenuOpen(false)}>
-              <button className="px-4 py-2 bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]">
-                Sign Up
-              </button>
-            </Link>
+            {renderAuthLinks(() => setMobileMenuOpen(false))}
           </nav>
         )}
       </header>
@@ -146,11 +173,11 @@ function Home() {
           (min-height, not a fixed height), so no structural change is
           needed here, just the two overflow-prone details below. */}
       <div ref={homeRef} className="min-h-[calc(100vh-72px)] flex flex-col scroll-mt-[88px]">
-        {/* NEW: object-fill -> object-cover. object-fill was actively
+        {/* object-fill -> object-cover. object-fill was actively
             stretching/distorting the image to force-fit the box;
             object-cover crops to fill the box while keeping the image's
             real proportions -- a correctness fix, not a style change.
-            Height now scales in three steps instead of a flat 60vh, so
+            Height scales in three steps instead of a flat 60vh, so
             the image doesn't dominate a short mobile viewport. */}
         <div className="w-full h-[45vh] sm:h-[55vh] lg:h-[60vh]">
           <img
@@ -161,10 +188,9 @@ function Home() {
         </div>
 
         <div className="flex-1 flex flex-col justify-center max-w-4xl mx-auto px-4 sm:px-6 text-center">
-          {/* NEW: whitespace-nowrap removed so this sentence wraps
-              instead of forcing horizontal scroll. Font size now steps
-              down on narrow screens instead of staying fixed at the
-              desktop size. */}
+          {/* whitespace-nowrap removed so this sentence wraps instead of
+              forcing horizontal scroll. Font size steps down on narrow
+              screens instead of staying fixed at the desktop size. */}
           <p
             className="text-xl sm:text-2xl lg:text-3xl text-[#5c4326] whitespace-normal lg:whitespace-nowrap"
             style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, marginBottom: "8px" }}
@@ -174,15 +200,19 @@ function Home() {
           <p className="text-base text-[#4a3620]" style={{ fontStyle: "italic", fontWeight: 600, marginBottom: "12px" }}>
             List a skill, get matched, and start swapping today.
           </p>
-          <Link to="/signup">
-            <button className="px-6 py-2 text-base font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]">
-              Get Started!
-            </button>
-          </Link>
+          {/* UPDATED: was a Link straight to /signup. Now a plain button
+              calling handleGetStarted(), which sends an already-logged-
+              in visitor to /profile instead of back through signup. */}
+          <button
+            onClick={handleGetStarted}
+            className="self-center px-6 py-2 text-base font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]"
+          >
+            Get Started!
+          </button>
         </div>
       </div>
 
-      {/* ABOUT SECTION. NEW: `h-[...]` (fixed height) -> `min-h-[...]`.
+      {/* ABOUT SECTION. `h-[...]` (fixed height) -> `min-h-[...]`.
           At the fixed height, once text+image switch from a row to a
           stacked column on mobile, the stacked content is taller than
           one viewport and the fixed height would clip it. min-height
@@ -201,9 +231,9 @@ function Home() {
                   fontFamily: "'Playfair Display', serif",
                   fontWeight: 900,
                   color: "#4a7c59",
-                  // NEW: clamp() keeps the exact 2rem desktop size but
-                  // lets it scale down smoothly on narrow screens
-                  // instead of staying fixed.
+                  // clamp() keeps the exact 2rem desktop size but lets
+                  // it scale down smoothly on narrow screens instead of
+                  // staying fixed.
                   fontSize: "clamp(1.5rem, 5vw, 2rem)",
                 }}
               >
@@ -233,7 +263,7 @@ function Home() {
                   </p>
                 </div>
             </div>
-            {/* NEW: fixed w-85 -> steps down on smaller screens, and
+            {/* fixed w-85 -> steps down on smaller screens, and
                 max-w-full + h-auto guarantee it can never force
                 horizontal overflow on a narrow screen. */}
             <img src={aboutImage} alt="" className="w-48 sm:w-64 md:w-56 lg:w-85 max-w-full h-auto rounded-lg" />
@@ -278,11 +308,10 @@ function Home() {
         </div>
       </div>
 
-      {/* FOOTER. NEW: `flex-col md:flex-row` -- text block and button
-          stack vertically (centered) below 768px instead of squeezing
-          into a row. Padding steps down on smaller screens. Everything
-          else -- colors, the CTA button, the copyright line -- is
-          untouched. */}
+      {/* FOOTER. `flex-col md:flex-row` -- text block and button stack
+          vertically (centered) below 768px instead of squeezing into a
+          row. Padding steps down on smaller screens. Everything else --
+          colors, the CTA button, the copyright line -- is untouched. */}
       <footer className="py-6 md:py-3 px-4 sm:px-8 lg:px-12" style={{ backgroundColor: "#3e2c1c" }}>
         <div className="flex flex-col md:flex-row items-center justify-between max-w-5xl mx-auto gap-4 md:gap-8">
           <div className="text-center md:text-left">

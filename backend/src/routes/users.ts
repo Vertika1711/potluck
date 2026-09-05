@@ -7,6 +7,13 @@ import bcrypt from "bcryptjs";
 
 const router = Router();
 
+// NEW: how many predefined avatars exist -- kept in sync manually with
+// the frontend's AVATARS array length (utils/avatar.ts). Used here only
+// to validate an incoming avatarId is actually in range, so a bad value
+// can't get saved even though the Mongoose schema also enforces
+// min/max as a second layer of defense.
+const AVATAR_COUNT = 18;
+
 // GET /api/users/:id/profile
 // Returns PUBLIC-safe fields only for any user -- name, trustScore,
 // completed-swap count, joined date, and their active listings.
@@ -49,6 +56,13 @@ router.get("/:id/profile", async (req, res) => {
       completedSwapCount,
       joinedAt: user.createdAt,
       activeListings,
+      // NEW: included so PublicProfile.tsx can render the same avatar
+      // logic (chosen, or fall back to the deterministic default) that
+      // Profile.tsx uses for the account owner's own view. Undefined
+      // is a valid value here -- the frontend's getAvatarSrc() already
+      // handles "no avatarId set" by falling back to the hash-based
+      // default, so nothing extra is needed on this end.
+      avatarId: user.avatarId,
     });
   } catch (error) {
     console.error("Fetch public profile error:", error);
@@ -64,12 +78,22 @@ router.get("/:id/profile", async (req, res) => {
 // just by passing a different id.
 router.put("/me", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { name, skillsOffered, skillsWanted, phone, phoneVisible } = req.body;
+    const { name, skillsOffered, skillsWanted, phone, phoneVisible, avatarId } = req.body;
 
     const user = await User.findById(req.userId);
 
     if (!user) {
       return res.status(404).json({ error: "User not found." });
+    }
+
+    // NEW: validate avatarId is actually a real avatar index BEFORE
+    // touching the user document -- same "fail fast, before any save"
+    // principle as the rest of this route's fields, even though the
+    // Mongoose schema's min/max would also catch this on .save().
+    // Checking explicitly here lets us return a clearer error message
+    // than a generic Mongoose validation error would.
+    if (avatarId !== undefined && (avatarId < 0 || avatarId >= AVATAR_COUNT)) {
+      return res.status(400).json({ error: "Invalid avatar selection." });
     }
 
     // Each field is only updated if it was actually included in the
@@ -82,6 +106,7 @@ router.put("/me", requireAuth, async (req: AuthRequest, res) => {
     if (skillsWanted !== undefined) user.skillsWanted = skillsWanted;
     if (phone !== undefined) user.phone = phone;
     if (phoneVisible !== undefined) user.phoneVisible = phoneVisible;
+    if (avatarId !== undefined) user.avatarId = avatarId;
 
     await user.save();
 
@@ -177,9 +202,14 @@ router.get("/search", async (req, res) => {
     // user base without a dedicated search index (e.g. MongoDB Atlas
     // Search or Elasticsearch) -- worth knowing as a limitation, not
     // hiding it.
+    // NEW: avatarId included so Explore's People tab shows each
+    // person's ACTUAL chosen avatar (or the correct deterministic
+    // fallback, computed client-side from their real _id) -- without
+    // this, search results would show a generic default that could
+    // mismatch what's shown on that same person's own profile.
     const users = await User.find({
       name: { $regex: q, $options: "i" },
-    }).select("name trustScore createdAt");
+    }).select("name trustScore createdAt avatarId");
 
     res.status(200).json(users);
   } catch (error) {
