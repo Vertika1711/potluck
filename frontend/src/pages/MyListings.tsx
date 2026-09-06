@@ -14,6 +14,11 @@ interface Listing {
   createdAt: string;
 }
 
+// NEW: same date-preset type as MyReviews.tsx -- "custom" reveals two
+// extra date inputs, the other three compute their own start/end
+// automatically.
+type DatePreset = "all" | "7days" | "30days" | "custom";
+
 function MyListings() {
   const navigate = useNavigate();
   const [listings, setListings] = useState<Listing[]>([]);
@@ -45,6 +50,22 @@ function MyListings() {
   // doesn't change anything visually until the user explicitly picks
   // "Oldest First".
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+
+  // NEW: date-range filter, same preset pattern as MyReviews.tsx --
+  // filters by createdAt. Unlike the type/status/sort controls above
+  // (which all apply live, instantly), presets here ALSO apply live --
+  // only "Custom range" needs an explicit Apply, since it depends on
+  // TWO separate date inputs both being set before filtering makes
+  // sense (applying after only the start date is picked would show a
+  // confusing, incomplete result).
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  // The ACTUAL applied custom range -- only updated when "Apply" is
+  // clicked, so typing/picking dates doesn't filter anything until
+  // both ends are deliberately confirmed.
+  const [appliedCustomStart, setAppliedCustomStart] = useState("");
+  const [appliedCustomEnd, setAppliedCustomEnd] = useState("");
 
   // NEW: pagination, same "reveal more of what's already fetched"
   // pattern as Explore.tsx's visibleCount -- no extra network request,
@@ -97,16 +118,71 @@ function MyListings() {
   // redirect above actually happens.
   if (!token) return null;
 
+  // NEW: computes the actual [start, end] Date range to filter against,
+  // based on the current preset -- for "all", returns null (no date
+  // filtering at all). For "custom", uses the APPLIED dates, not the
+  // draft ones being typed/picked, so nothing filters until Apply is
+  // clicked.
+  function getActiveDateRange(): { start: Date; end: Date } | null {
+    const now = new Date();
+
+    if (datePreset === "7days") {
+      const sevenDaysAgo = new Date(now);
+      sevenDaysAgo.setDate(now.getDate() - 7);
+      return { start: sevenDaysAgo, end: now };
+    }
+
+    if (datePreset === "30days") {
+      const thirtyDaysAgo = new Date(now);
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      return { start: thirtyDaysAgo, end: now };
+    }
+
+    if (datePreset === "custom") {
+      if (!appliedCustomStart || !appliedCustomEnd) return null;
+      // End date extended to the end of that day, so a date-only value
+      // includes the whole day, same reasoning as the backend's
+      // ratings date-filter logic.
+      return {
+        start: new Date(appliedCustomStart),
+        end: new Date(`${appliedCustomEnd}T23:59:59.999`),
+      };
+    }
+
+    return null; // "all" -- no filter
+  }
+
+  function applyCustomRange() {
+    setAppliedCustomStart(customStart);
+    setAppliedCustomEnd(customEnd);
+  }
+
+  // Resets the date filter back to "all time" immediately -- same
+  // "clearing is a reset action, not a new selection to review" idea
+  // as MyReviews.tsx's clearFilter.
+  function clearDateFilter() {
+    setDatePreset("all");
+    setCustomStart("");
+    setCustomEnd("");
+    setAppliedCustomStart("");
+    setAppliedCustomEnd("");
+  }
+
   // Derived, same pattern as Explore's filteredListings -- not its own
   // separate state, just a filtered view of the fetched listings.
-  // UPDATED: now also filters by statusFilter (a second, independent
-  // dimension from typeFilter) and sorts by createdAt, before
-  // pagination slices the final visible page below. Order matters:
-  // filter both dimensions first (so counts/pagination reflect the
-  // actually-narrowed set), sort second, slice last.
+  // UPDATED: now also filters by statusFilter, and by the date range
+  // (if one is active), before sorting and pagination. Order: filter
+  // every dimension first (so counts/pagination reflect the actually-
+  // narrowed set), sort second, slice last.
+  const dateRange = getActiveDateRange();
   const filteredListings = listings
     .filter((listing) => typeFilter === "all" || listing.type === typeFilter)
     .filter((listing) => statusFilter === "all" || listing.status === statusFilter)
+    .filter((listing) => {
+      if (!dateRange) return true;
+      const created = new Date(listing.createdAt).getTime();
+      return created >= dateRange.start.getTime() && created <= dateRange.end.getTime();
+    })
     .sort((a, b) => {
       const aTime = new Date(a.createdAt).getTime();
       const bTime = new Date(b.createdAt).getTime();
@@ -117,10 +193,11 @@ function MyListings() {
   // showing just the first page -- same reasoning as Explore.tsx's
   // equivalent effect: otherwise a newly narrowed/reordered list could
   // leave "Load More" in a confusing state relative to what's actually
-  // being shown.
+  // being shown. UPDATED: also resets on the date preset changing and
+  // on the applied custom range changing (i.e. after clicking Apply).
   useEffect(() => {
     setVisibleCount(6);
-  }, [typeFilter, statusFilter, sortOrder]);
+  }, [typeFilter, statusFilter, sortOrder, datePreset, appliedCustomStart, appliedCustomEnd]);
 
   // NEW: only this many of the filtered+sorted results are actually
   // rendered -- "Load More" increases visibleCount, revealing more of
@@ -241,7 +318,7 @@ function MyListings() {
             screen narrows past a certain point, the dropdown group
             naturally drops to its own line below the pills, rather than
             needing a separate mobile-specific layout. */}
-        <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+        <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
           {/* Type filter, matching Explore's pattern -- kept as pills
               since this is the primary, most-used filter and already
               matches the established visual language across the app. */}
@@ -299,6 +376,62 @@ function MyListings() {
               </select>
             </div>
           </div>
+        </div>
+
+        {/* NEW: date-range filter -- a preset dropdown, matching
+            MyReviews.tsx's pattern. Presets (7/30 days) apply
+            immediately, same as every other filter on this page --
+            only "Custom range" needs an explicit Apply, since it
+            depends on two separate date inputs both being set. */}
+        <div className="flex items-center gap-3 flex-wrap mb-4">
+          <label htmlFor="datePreset" className="text-sm text-[#7a6a58]">
+            Posted:
+          </label>
+          <select
+            id="datePreset"
+            value={datePreset}
+            onChange={(e) => setDatePreset(e.target.value as DatePreset)}
+            className="px-3 py-1.5 rounded-full text-sm font-semibold border border-[#c9a06c] bg-[#f7ecd8] text-[#4a3620] focus:outline-none focus:border-[#8b5a2b] cursor-pointer"
+          >
+            <option value="all">All time</option>
+            <option value="7days">Last 7 days</option>
+            <option value="30days">Last 30 days</option>
+            <option value="custom">Custom range</option>
+          </select>
+
+          {datePreset === "custom" && (
+            <>
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="px-3 py-1.5 rounded border border-[#c9a06c] bg-[#f7ecd8] text-[#4a3620] text-sm focus:outline-none focus:border-[#8b5a2b]"
+              />
+              <span className="text-sm text-[#7a6a58]">to</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="px-3 py-1.5 rounded border border-[#c9a06c] bg-[#f7ecd8] text-[#4a3620] text-sm focus:outline-none focus:border-[#8b5a2b]"
+              />
+              <button
+                onClick={applyCustomRange}
+                disabled={!customStart || !customEnd}
+                className="px-3 py-1.5 text-sm font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22] disabled:opacity-50"
+              >
+                Apply
+              </button>
+            </>
+          )}
+
+          {datePreset !== "all" && (
+            <button
+              onClick={clearDateFilter}
+              className="px-3 py-1.5 text-sm font-semibold border border-[#c9a06c] text-[#4a3620] rounded hover:bg-[#f1e5cc]"
+            >
+              Clear
+            </button>
+          )}
         </div>
 
         {/* Same accent-box style as Home.tsx's About section (left

@@ -289,9 +289,40 @@ router.get("/me/stats", requireAuth, async (req: AuthRequest, res) => {
       swapsByMonth[monthKey] = (swapsByMonth[monthKey] || 0) + 1;
     }
 
-    // Convert to a sorted array -- easier for Recharts to consume than
+    // Requests-sent-over-time -- group EVERY swap I originally
+    // requested (any status, not just completed) by the month it was
+    // CREATED. Tracks when I reached OUT to people, regardless of how
+    // those requests were eventually resolved.
+    const requestsSentByMonth: Record<string, number> = {};
+    for (const swap of allMySwaps) {
+      if (swap.requesterId.toString() !== myId) continue; // only swaps I sent
+      const monthKey = swap.createdAt.toISOString().slice(0, 7);
+      requestsSentByMonth[monthKey] = (requestsSentByMonth[monthKey] || 0) + 1;
+    }
+
+    // NEW: requests-received-over-time -- the mirror image of the above,
+    // grouping swaps where I was the RECEIVER (someone else reached out
+    // to ME) by the month they were created. Together with requests
+    // sent, this gives a fuller "engagement" picture -- how much
+    // activity is flowing in each direction, not just how proactive I've been.
+    const requestsReceivedByMonth: Record<string, number> = {};
+    for (const swap of allMySwaps) {
+      if (swap.receiverId.toString() !== myId) continue; // only swaps sent TO me
+      const monthKey = swap.createdAt.toISOString().slice(0, 7);
+      requestsReceivedByMonth[monthKey] = (requestsReceivedByMonth[monthKey] || 0) + 1;
+    }
+
+    // Convert to sorted arrays -- easier for Recharts to consume than
     // an object, and sorted so the chart reads chronologically.
     const swapsOverTime = Object.entries(swapsByMonth)
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    const requestsOverTime = Object.entries(requestsSentByMonth)
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    const requestsReceivedOverTime = Object.entries(requestsReceivedByMonth)
       .map(([month, count]) => ({ month, count }))
       .sort((a, b) => a.month.localeCompare(b.month));
 
@@ -307,6 +338,8 @@ router.get("/me/stats", requireAuth, async (req: AuthRequest, res) => {
       taughtCount,
       learnedCount,
       swapsOverTime,
+      requestsOverTime,
+      requestsReceivedOverTime, // NEW
     });
   } catch (error) {
     console.error("Fetch dashboard stats error:", error);
