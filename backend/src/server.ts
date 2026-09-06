@@ -8,6 +8,7 @@ import swapRoutes from "./routes/swaps.js";
 import matchingRoutes from "./routes/matching.js";
 import ratingRoutes from "./routes/ratings.js";
 import userRoutes from "./routes/users.js";
+import notificationRoutes from "./routes/notifications.js";
 
 // Reads the .env file and loads its values into process.env,
 // so we can access things like MONGODB_URI in the code below
@@ -42,6 +43,8 @@ app.use("/api/swaps", swapRoutes);
 app.use("/api/matches", matchingRoutes);
 app.use("/api/ratings", ratingRoutes);
 app.use("/api/users", userRoutes);
+
+app.use("/api/notifications", notificationRoutes);
 
 async function startServer() {
   try {

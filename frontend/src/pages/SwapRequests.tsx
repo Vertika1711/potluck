@@ -456,7 +456,22 @@ function SwapRequests() {
                 </label>
               ))}
             </div>
-            <div className="flex gap-2">
+
+            {/* NEW: lets the picker agree to the swap without claiming
+                any of the offered listings specifically -- for when
+                they're fine proceeding on some other informal basis.
+                Deliberately styled as a plain text link, not a button
+                of equal visual weight to "Confirm Pick" -- this is the
+                less common path, and shouldn't visually compete with
+                the primary action. */}
+            <button
+              onClick={() => handleAction(swap._id, "pick", { action: "accept_without_pick" })}
+              className="text-sm font-semibold text-left text-[#8b5a2b] hover:text-[#7a4a22] hover:underline w-fit"
+            >
+              None of these — just accept the swap as-is
+            </button>
+
+            <div className="flex gap-2 mt-1">
               <button
                 onClick={() =>
                   handleAction(swap._id, "pick", {

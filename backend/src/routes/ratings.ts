@@ -3,6 +3,7 @@ import Rating from "../models/Rating.js";
 import Swap from "../models/Swap.js";
 import User from "../models/User.js";
 import { requireAuth, AuthRequest } from "../middleware/auth.js";
+import { createNotification } from "../utils/notifications.js";
 
 const router = Router();
 
@@ -72,6 +73,16 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
       allRatingsForUser.reduce((sum, r) => sum + r.score, 0) / allRatingsForUser.length;
 
     await User.findByIdAndUpdate(ratedUserId, { trustScore: averageScore });
+
+    // NEW: notify the person being rated that they received a review.
+    const rater = await User.findById(req.userId).select("name");
+    await createNotification({
+      userId: ratedUserId.toString(),
+      type: "new_rating",
+      message: `${rater?.name ?? "Someone"} left you a review.`,
+      link: "/my-reviews",
+      relatedRatingId: rating._id.toString(),
+    });
 
     res.status(201).json(rating);
   } catch (error) {

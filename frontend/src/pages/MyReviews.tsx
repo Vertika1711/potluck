@@ -159,17 +159,39 @@ function MyReviews() {
   // logic as SwapRequests.tsx's myTeachAndLearn, adapted to work from a
   // rating's perspective instead of a live swap card. "isRequester"
   // here means *I* was the one who originally sent the swap request.
-  function myTeachAndLearnForRating(rating: Rating): { teachTitle: string; learnTitle: string } | null {
+  // UPDATED: now returns either a full { teachTitle, learnTitle } pair
+  // (when the swap went through negotiation and has a selectedListingId),
+  // OR a single { single: { title, role } } (when the swap used the
+  // plain fallback flow -- only one listing was ever involved, so
+  // there's nothing to pair it with, but we still know enough --
+  // listingType, and which side I was on -- to correctly label that
+  // one listing as taught or learned).
+  function myTeachAndLearnForRating(
+    rating: Rating
+  ): { teachTitle: string; learnTitle: string } | { single: { title: string; role: "teach" | "learn" } } | null {
     const swap = rating.swapId;
-    if (!swap || !swap.selectedListingId || !swap.listingId || !myId) return null;
+    if (!swap || !swap.listingId || !myId) return null;
 
     const isRequester = swap.requesterId === myId;
     const iLearnTheTarget =
       (swap.listingType === "want" && !isRequester) || (swap.listingType === "offer" && isRequester);
 
-    return iLearnTheTarget
-      ? { learnTitle: swap.listingId.title, teachTitle: swap.selectedListingId.title }
-      : { teachTitle: swap.listingId.title, learnTitle: swap.selectedListingId.title };
+    // Full pair -- only possible once a pick has actually happened.
+    if (swap.selectedListingId) {
+      return iLearnTheTarget
+        ? { learnTitle: swap.listingId.title, teachTitle: swap.selectedListingId.title }
+        : { teachTitle: swap.listingId.title, learnTitle: swap.selectedListingId.title };
+    }
+
+    // NEW: fallback -- only the target listing exists, but we can still
+    // correctly say whether I taught or learned IT specifically, using
+    // the same isRequester/listingType logic as the full-pair case above.
+    return {
+      single: {
+        title: swap.listingId.title,
+        role: iLearnTheTarget ? "learn" : "teach",
+      },
+    };
   }
 
   if (loading) {
@@ -316,7 +338,30 @@ function MyReviews() {
                     inline text -- reads as distinct metadata rather
                     than a floating sentence competing with the comment
                     text below it. */}
-                {teachLearn && (
+                {/* UPDATED: handles both shapes teachLearn can now
+                    return -- a full paired display (both listings,
+                    joined by ↔), or a single pill (fallback swaps with
+                    no negotiated second listing), styled with the same
+                    green/orange teach/learn colors either way so a
+                    single pill still reads consistently with the
+                    paired version. */}
+                {teachLearn && "single" in teachLearn && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      className="text-xs font-semibold rounded-full px-2 py-0.5"
+                      style={
+                        teachLearn.single.role === "teach"
+                          ? { backgroundColor: "#e3ede3", color: "#4a7c59" }
+                          : { backgroundColor: "#f4e3d0", color: "#b8590d" }
+                      }
+                    >
+                      {teachLearn.single.role === "teach" ? "You taught: " : "You learned: "}
+                      {teachLearn.single.title}
+                    </span>
+                  </div>
+                )}
+
+                {teachLearn && "teachTitle" in teachLearn && (
                   <div className="flex items-center gap-2 flex-wrap">
                     <span
                       className="text-xs font-semibold rounded-full px-2 py-0.5"
