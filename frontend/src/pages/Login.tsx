@@ -8,6 +8,13 @@ function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
+  // NEW: true only when the login failure was specifically because the
+  // account exists but hasn't verified its email yet -- lets us show a
+  // "Resend verification email" option instead of a dead-end error.
+  const [isUnverified, setIsUnverified] = useState(false);
+  const [resendMessage, setResendMessage] = useState("");
+  const [isResending, setIsResending] = useState(false);
+
   // NEW: controls whether the password field shows plain text or dots.
   // A custom toggle (rather than relying on the browser's native reveal
   // icon) so it can actually be styled in the app's brown, consistently
@@ -19,6 +26,8 @@ function Login() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setIsUnverified(false);
+    setResendMessage("");
 
     try {
       const response = await axios.post(`${API_URL}/api/auth/login`, {
@@ -36,6 +45,29 @@ function Login() {
     } catch (err: any) {
       const message = err.response?.data?.error || "Something went wrong. Please try again.";
       setError(message);
+      // NEW: the backend includes unverified: true specifically for
+      // the "account exists but not verified" case -- checked here so
+      // the resend option only appears for that exact situation, not
+      // any other login failure.
+      setIsUnverified(err.response?.data?.unverified === true);
+    }
+  }
+
+  // NEW: calls the same resend-verification route used by Signup's
+  // equivalent flow, using whatever email is currently typed in the
+  // form -- no separate input needed, since the person just tried to
+  // log in with this exact email.
+  async function handleResendVerification() {
+    setIsResending(true);
+    setResendMessage("");
+
+    try {
+      const response = await axios.post(`${API_URL}/api/auth/resend-verification`, { email });
+      setResendMessage(response.data.message);
+    } catch (err) {
+      setResendMessage("Something went wrong. Please try again.");
+    } finally {
+      setIsResending(false);
     }
   }
 
@@ -138,6 +170,28 @@ function Login() {
             {error && (
               <p className="mt-3 text-sm text-red-700 bg-red-50 border border-red-300 rounded px-3 py-2">
                 {error}
+              </p>
+            )}
+
+            {/* NEW: only shown when the login error was specifically an
+                unverified account. Deliberately a plain link-styled
+                button (not a heavy primary button) so it doesn't compete
+                visually with "Log In" itself -- this is a recovery path,
+                not the main action. */}
+            {isUnverified && !resendMessage && (
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={isResending}
+                className="mt-2 text-sm font-semibold text-left text-[#8b5a2b] hover:text-[#7a4a22] hover:underline disabled:opacity-60"
+              >
+                {isResending ? "Sending..." : "Resend verification email"}
+              </button>
+            )}
+
+            {resendMessage && (
+              <p className="mt-2 text-sm text-[#4a7c59] bg-[#eef4ee] border border-[#a9c9b0] rounded px-3 py-2">
+                {resendMessage}
               </p>
             )}
 

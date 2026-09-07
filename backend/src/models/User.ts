@@ -14,6 +14,14 @@ export interface IUser extends Document {
   phoneVisible: boolean;
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
+  // NEW: email verification -- same shape as the reset-password token
+  // pair above, since it's the exact same underlying mechanism (a
+  // random token + an expiry, emailed as a link). emailVerified starts
+  // false for every new signup and gets flipped to true once the
+  // verification link is clicked; login is blocked until then.
+  emailVerified: boolean;
+  emailVerificationToken?: string;
+  emailVerificationExpires?: Date;
   // NEW: which of the 18 predefined illustrated avatars this user has
   // chosen (an index into the frontend's AVATARS array, 0-17).
   // Optional/undefined means "hasn't picked one" -- the frontend falls
@@ -57,6 +65,20 @@ const UserSchema = new Schema<IUser>({
   resetPasswordExpires: {
     type: Date,
     required: false, // set alongside the token, cleared once used or expired
+  },
+  // NEW: defaults to false for every new signup -- login is blocked
+  // until this flips to true via the /verify-email/:token route.
+  emailVerified: {
+    type: Boolean,
+    default: false,
+  },
+  emailVerificationToken: {
+    type: String,
+    required: false, // only set while verification is pending, cleared once used
+  },
+  emailVerificationExpires: {
+    type: Date,
+    required: false, // 24 hours from signup, per our agreed expiry window
   },
   // NEW: optional -- undefined until the user explicitly picks one via
   // Edit Profile. min/max match the frontend's 18-avatar set (indices

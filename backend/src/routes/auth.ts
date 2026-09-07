@@ -16,8 +16,46 @@ const router = express.Router();
 // dotenv.config() line. Creating the Resend client here would run
 // before RESEND_API_KEY exists in process.env at all, causing
 // "Missing API key" even with a perfectly correct .env file. Moved
-// inside the route handler below instead, so it's only created once an
-// actual request comes in -- long after dotenv.config() has already run.
+// inside each route handler that needs it instead, so it's only
+// created once an actual request comes in -- long after
+// dotenv.config() has already run.
+
+// NEW: shared helper -- generates a verification token, saves it on
+// the user with a 24-hour expiry, and emails the verification link.
+// Used by both /signup (right after account creation) and
+// /resend-verification (for anyone who missed the original email or
+// let it expire). Kept as one function so the two callers can never
+// drift into sending subtly different emails.
+async function sendVerificationEmail(user: InstanceType<typeof User>) {
+  const verificationToken = crypto.randomBytes(32).toString("hex");
+
+  user.emailVerificationToken = verificationToken;
+  user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+  await user.save();
+
+  const verificationLink = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
+
+  const resend = new Resend(process.env.RESEND_API_KEY);
+
+  // Same graceful-degradation principle as forgot-password's email
+  // send -- a Resend hiccup here shouldn't break signup itself. The
+  // account still gets created; the person can always use
+  // /resend-verification if the first email never arrives.
+  try {
+    await resend.emails.send({
+      from: "Potluck <onboarding@resend.dev>",
+      to: user.email,
+      subject: "Verify your Potluck account",
+      html: `
+        <p>Welcome to Potluck! Please verify your email address to activate your account.</p>
+        <p><a href="${verificationLink}">Click here to verify your email</a></p>
+        <p>This link is valid for 24 hours. If you didn't create a Potluck account, you can safely ignore this email.</p>
+      `,
+    });
+  } catch (emailError) {
+    console.error("Failed to send verification email:", emailError);
+  }
+}
 
 // POST /api/auth/signup — creates a new user account
 router.post("/signup", async (req, res) => {
@@ -38,25 +76,120 @@ router.post("/signup", async (req, res) => {
 
     // Check if someone already signed up with this email
     const existingUser = await User.findOne({ email });
+
     if (existingUser) {
-      return res.status(409).json({ error: "An account with this email already exists." });
+      // NEW: if the existing account was never verified AND its
+      // verification window has already expired, treat it as
+      // abandoned -- delete it and let this new signup proceed fresh,
+      // as if the first attempt never happened. This is a lazy cleanup
+      // check (only runs at the one moment it actually matters: a
+      // second signup attempt), not a background job -- consistent
+      // with this project's established preference for checking things
+      // lazily rather than running scheduled jobs (decisions-log #6,
+      // #15, #44, #66).
+      const isStaleUnverified =
+        !existingUser.emailVerified &&
+        existingUser.emailVerificationExpires &&
+        existingUser.emailVerificationExpires < new Date();
+
+      if (isStaleUnverified) {
+        await existingUser.deleteOne();
+      } else if (!existingUser.emailVerified) {
+        // Still within the verification window -- don't let a second
+        // signup attempt silently create a duplicate or confuse the
+        // person. unverified: true lets the frontend show a "Resend
+        // verification email" option instead of a dead-end error.
+        return res.status(409).json({
+          error: "An account with this email already exists but hasn't been verified yet. Check your inbox, or resend the verification email.",
+          unverified: true,
+        });
+      } else {
+        return res.status(409).json({ error: "An account with this email already exists." });
+      }
     }
 
     // Hash the password — 10 is the "salt rounds," a standard, safe default
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create and save the new user in MongoDB
+    // Create and save the new user in MongoDB. emailVerified defaults
+    // to false via the schema -- login is blocked until the
+    // verification link below is clicked.
     const user = await User.create({ name, email, passwordHash });
+
+    await sendVerificationEmail(user);
 
     // Respond without ever sending the password hash back
     res.status(201).json({
       id: user._id,
       name: user.name,
       email: user.email,
+      message: "Account created! Please check your email to verify your account before logging in.",
     });
   } catch (error) {
     console.error("Signup error:", error);
     res.status(500).json({ error: "Something went wrong during signup." });
+  }
+});
+
+// NEW: GET /api/auth/verify-email/:token — completes email
+// verification. Takes the token from the verification link's URL.
+router.get("/verify-email/:token", async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const user = await User.findOne({
+      emailVerificationToken: token,
+      emailVerificationExpires: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: "This verification link is invalid or has expired." });
+    }
+
+    user.emailVerified = true;
+
+    // Same "clear the token fields" pattern as reset-password -- makes
+    // the link a genuine one-time use.
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+
+    await user.save();
+
+    res.status(200).json({ message: "Your email has been verified! You can now log in." });
+  } catch (error) {
+    console.error("Verify email error:", error);
+    res.status(500).json({ error: "Something went wrong verifying your email." });
+  }
+});
+
+// NEW: POST /api/auth/resend-verification — sends a fresh verification
+// email, for anyone whose original link expired or never arrived.
+// Reuses the exact same sendVerificationEmail() helper as signup, so
+// both emails are always identical.
+router.post("/resend-verification", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required." });
+    }
+
+    const user = await User.findOne({ email });
+
+    // Deliberately vague response either way -- same email-enumeration
+    // protection principle used throughout auth.ts.
+    const genericMessage = "If an unverified account exists for this email, a new verification link has been sent.";
+
+    if (!user || user.emailVerified) {
+      return res.status(200).json({ message: genericMessage });
+    }
+
+    await sendVerificationEmail(user);
+
+    res.status(200).json({ message: genericMessage });
+  } catch (error) {
+    console.error("Resend verification error:", error);
+    res.status(500).json({ error: "Something went wrong processing your request." });
   }
 });
 
@@ -80,6 +213,19 @@ router.post("/login", async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
       return res.status(401).json({ error: "Invalid email or password." });
+    }
+
+    // NEW: block login until the email has been verified. Checked
+    // AFTER the password match, not before -- so a wrong-password
+    // attempt on an unverified account still gets the standard vague
+    // "Invalid email or password" error, not a hint that the account
+    // exists but is unverified. unverified: true lets the frontend
+    // offer a "Resend verification email" option here too.
+    if (!user.emailVerified) {
+      return res.status(403).json({
+        error: "Please verify your email before logging in. Check your inbox for a verification link.",
+        unverified: true,
+      });
     }
 
     // Create a signed token containing the user's ID, valid for 7 days
@@ -151,10 +297,6 @@ router.post("/forgot-password", async (req, res) => {
     // regardless of where the backend is running.
     const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
 
-    // NEW: Resend client created HERE, not at the top of the file --
-    // see the comment near the top imports for why. By this point,
-    // dotenv.config() has definitely already run, so
-    // process.env.RESEND_API_KEY is guaranteed to be available.
     const resend = new Resend(process.env.RESEND_API_KEY);
 
     // Wrapped in its own try/catch, separate from the outer one --
