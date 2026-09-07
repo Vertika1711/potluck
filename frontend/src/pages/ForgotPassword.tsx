@@ -6,25 +6,16 @@ import { API_URL } from "../config";
 function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
-  const [resetLink, setResetLink] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setMessage("");
-    setResetLink(null);
 
     try {
       const response = await axios.post(`${API_URL}/api/auth/forgot-password`, { email });
       setMessage(response.data.message);
-      // DEV-ONLY -- resetLink only exists in the response because
-      // there's no real email service wired up yet. In production this
-      // field wouldn't be here at all, and the user would check their
-      // inbox instead of seeing a link directly on screen.
-      if (response.data.resetLink) {
-        setResetLink(response.data.resetLink);
-      }
     } catch (err) {
       if (axios.isAxiosError(err) && err.response) {
         setError(err.response.data.error || "Something went wrong.");
@@ -118,7 +109,10 @@ function ForgotPassword() {
 
           {/* Success message -- uses the site's green accent, same family
               as the "About"/"How It Works" headings, rather than a generic
-              gray, so it visually reads as a positive confirmation. */}
+              gray, so it visually reads as a positive confirmation. Now the
+              ONLY feedback shown on success -- since a real email is sent
+              via Resend, there's no reset link to show directly anymore
+              (see decisions-log.md #22's dev-mode note, now closed out). */}
           {message && (
             <p className="mt-4 text-sm text-[#4a7c59] bg-[#eef4ee] border border-[#a9c9b0] rounded px-3 py-2">
               {message}
@@ -129,34 +123,6 @@ function ForgotPassword() {
             <p className="mt-4 text-sm text-red-700 bg-red-50 border border-red-300 rounded px-3 py-2">
               {error}
             </p>
-          )}
-
-          {/* DEV-ONLY: shows the link directly since there's no real email
-              sending yet -- see decisions-log.md #22 for why this is
-              deliberate. Styled with a dashed border to visually mark it as
-              a temporary dev-mode affordance, distinct from the success/
-              error boxes above, so it doesn't read as a permanent feature.
-              NOTE: this still hardcodes "http://localhost:5173" (the
-              FRONTEND's own dev port, not the backend) -- left as-is for
-              now since this entire dev-mode block is slated to be replaced
-              by real email sending later this same deployment phase
-              (decisions-log.md #22), so fixing it here would be wasted
-              effort on code about to be deleted. */}
-          {resetLink && (
-            <div className="mt-4 p-3 rounded border border-dashed border-[#8b5a2b] bg-[#f1e5cc]">
-              <p className="text-sm text-[#4a3620] mb-1">
-                <strong>Dev mode:</strong> Since email sending isn't set up yet, here's your Reset Link directly:
-              </p>
-              <Link
-                to={resetLink.replace("http://localhost:5173", "")}
-                className="text-sm font-semibold text-[#8b5a2b] hover:underline break-all"
-              >
-                {resetLink}
-              </Link>
-              <p className="text-xs text-[#7a6a58] mt-2">
-                This link is valid for 1 hour from now.
-              </p>
-            </div>
           )}
 
         <p className="text-center mt-5 text-[#4a3620]">

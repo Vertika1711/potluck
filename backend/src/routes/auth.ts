@@ -5,8 +5,19 @@ import User from "../models/User.js";
 import jwt from "jsonwebtoken";
 import { requireAuth, AuthRequest } from "../middleware/auth.js";
 import crypto from "crypto";
+import { Resend } from "resend";
 
 const router = express.Router();
+
+// UPDATED: NOT created here at module load time. In an ES module
+// ("type": "module" in package.json), import statements are resolved
+// and run BEFORE any other code in the importING file -- meaning this
+// file's top-level code runs before server.ts even reaches its
+// dotenv.config() line. Creating the Resend client here would run
+// before RESEND_API_KEY exists in process.env at all, causing
+// "Missing API key" even with a perfectly correct .env file. Moved
+// inside the route handler below instead, so it's only created once an
+// actual request comes in -- long after dotenv.config() has already run.
 
 // POST /api/auth/signup — creates a new user account
 router.post("/signup", async (req, res) => {
@@ -94,14 +105,15 @@ router.post("/login", async (req, res) => {
 
 // POST /api/auth/forgot-password — starts a password reset. Takes an
 // email, and IF an account exists for it, generates a secure random
-// token + 1-hour expiry and saves it on that user.
+// token + 1-hour expiry, saves it on that user, and emails a real
+// reset link via Resend.
 //
-// DEV-ONLY NOTE: this currently returns the reset link directly in the
-// response instead of emailing it, since there's no real email service
-// wired up yet (see decisions-log.md for why this is a deliberate,
-// temporary choice, not a shortcut left in by accident). At deployment,
-// this response would stop including resetLink, and an email would be
-// sent instead.
+// UPDATED: previously returned resetLink directly in the API response
+// (dev-mode only, since no real email service was wired up yet -- see
+// decisions-log.md #22). Now that Resend is connected, a real email is
+// sent instead, and resetLink is no longer included in the response at
+// all -- exactly the change decisions-log #22 flagged as needed "once
+// real users with real inboxes exist."
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
@@ -116,7 +128,7 @@ router.post("/forgot-password", async (req, res) => {
     // protection principle as login's error message. We don't want an
     // attacker to be able to tell which emails have accounts just by
     // trying this route.
-    const genericMessage = "If an account exists for this email, a password reset link has been generated.";
+    const genericMessage = "If an account exists for this email, a password reset link has been sent.";
 
     if (!user) {
       return res.status(200).json({ message: genericMessage });
@@ -132,12 +144,42 @@ router.post("/forgot-password", async (req, res) => {
     user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
     await user.save();
 
-    const resetLink = `http://localhost:5173/reset-password/${resetToken}`;
+    // FRONTEND_URL is the same "one config value, different per
+    // environment" pattern as the frontend's own API_URL -- locally
+    // this is http://localhost:5173, and on Render it's set to the
+    // real deployed Vercel URL, so this link is always correct
+    // regardless of where the backend is running.
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
 
-    res.status(200).json({
-      message: genericMessage,
-      resetLink, // DEV-ONLY -- would not be in a real response after deployment
-    });
+    // NEW: Resend client created HERE, not at the top of the file --
+    // see the comment near the top imports for why. By this point,
+    // dotenv.config() has definitely already run, so
+    // process.env.RESEND_API_KEY is guaranteed to be available.
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    // Wrapped in its own try/catch, separate from the outer one --
+    // same graceful-degradation principle used for the AI tagging/
+    // matching calls (decisions-log #66's notification writes follow
+    // this too). If Resend's API has a hiccup, the user still gets a
+    // normal-looking success response (so we don't leak whether their
+    // email exists), and the real error is logged server-side for us
+    // to notice, rather than the whole request failing with a 500.
+    try {
+      await resend.emails.send({
+        from: "Potluck <onboarding@resend.dev>",
+        to: email,
+        subject: "Reset your Potluck password",
+        html: `
+          <p>Someone requested a password reset for your Potluck account.</p>
+          <p><a href="${resetLink}">Click here to reset your password</a></p>
+          <p>This link is valid for 1 hour. If you didn't request this, you can safely ignore this email.</p>
+        `,
+      });
+    } catch (emailError) {
+      console.error("Failed to send reset email:", emailError);
+    }
+
+    res.status(200).json({ message: genericMessage });
   } catch (error) {
     console.error("Forgot password error:", error);
     res.status(500).json({ error: "Something went wrong processing your request." });

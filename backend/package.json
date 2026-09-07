@@ -19,6 +19,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.2",
     "openai": "^7.5.0",
+    "resend": "^6.26.0",
     "tsx": "^4.23.12"
   },
   "devDependencies": {
