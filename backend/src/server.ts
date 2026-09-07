@@ -20,7 +20,10 @@ const app = express();
 // Without this, the browser blocks the requests before they even arrive here.
 app.use(cors());
 
-const PORT = 5000;
+// Render (and most hosting platforms) assign a port dynamically via process.env.PORT —
+// your app doesn't get to pick its own port in production. Locally, process.env.PORT
+// doesn't exist, so we fall back to 5000, keeping local dev working exactly as before.
+const PORT = process.env.PORT || 5000;
 
 // Pull the connection string out of the environment instead of hardcoding it here —
 // this is what keeps the real credentials out of the code (and out of GitHub)
