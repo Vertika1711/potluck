@@ -151,8 +151,18 @@ function NotificationBell({ token, onNavigate }: { token: string; onNavigate?: (
       </button>
 
       {dropdownOpen && (
+        // UPDATED: mobile/desktop now use genuinely different positioning
+        // strategies, not just different widths. Below `lg`, this is
+        // `fixed` and anchored to the actual VIEWPORT (inset-x-4, a fixed
+        // top offset) -- completely ignoring where the bell icon itself
+        // sits, since on mobile the bell is centered inside a narrow
+        // hamburger menu, and the dropdown's real width has nowhere to
+        // go but off-screen if positioned relative to that tiny
+        // container. At `lg` and up, this reverts to the original
+        // `absolute right-0 top-full` behavior, anchored to the bell
+        // itself, which already works correctly on a wide desktop navbar.
         <div
-          className="absolute right-0 top-full mt-2 w-80 max-w-[90vw] bg-[#f7ecd8] border border-[#c9a06c] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto"
+          className="fixed inset-x-4 top-20 lg:absolute lg:inset-x-auto lg:top-full lg:right-0 lg:mt-2 w-auto lg:w-80 max-w-[90vw] bg-[#f7ecd8] border border-[#c9a06c] rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-[#c9a06c]">
             <span className="font-semibold text-[#4a3620]">Notifications</span>
