@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { getAvatarSrc } from "../utils/avatar";
+import { API_URL } from "../config";
 
 // Shared hook for "what avatar should I show for the currently logged-in
 // user, if any" -- extracted here so Navbar.tsx and Home.tsx (and any
@@ -26,7 +27,7 @@ export function useMyAvatar(token: string | null): string | null {
 
     async function fetchAvatar() {
       try {
-        const response = await axios.get("http://localhost:5000/api/auth/me", {
+        const response = await axios.get(`${API_URL}/api/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!cancelled) {

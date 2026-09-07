@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../components/Navbar";
+import { API_URL } from "../config";
 
 // UPDATED: status now includes the three new negotiation stages, plus
 // the fields that track the negotiation itself (listingType,
@@ -99,14 +100,14 @@ function SwapRequests() {
     async function fetchEverything() {
       try {
         const [swapsRes, profileRes, listingsRes, myRatingsRes] = await Promise.all([
-          axios.get("http://localhost:5000/api/swaps/mine", {
+          axios.get(`${API_URL}/api/swaps/mine`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          axios.get("http://localhost:5000/api/auth/me", {
+          axios.get(`${API_URL}/api/auth/me`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
-          axios.get("http://localhost:5000/api/listings"),
-          axios.get("http://localhost:5000/api/ratings/mine", {
+          axios.get(`${API_URL}/api/listings`),
+          axios.get(`${API_URL}/api/ratings/mine`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -142,7 +143,7 @@ function SwapRequests() {
   async function handleAction(swapId: string, path: string, body?: object) {
     try {
       const response = await axios.put(
-        `http://localhost:5000/api/swaps/${swapId}/${path}`,
+        `${API_URL}/api/swaps/${swapId}/${path}`,
         body || {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -193,7 +194,7 @@ function SwapRequests() {
 
     try {
       await axios.post(
-        "http://localhost:5000/api/ratings",
+        `${API_URL}/api/ratings`,
         { swapId, score: ratingScore, comment: ratingComment || undefined },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -213,7 +214,7 @@ function SwapRequests() {
     setLoadingContactId(swapId);
     try {
       const response = await axios.get(
-        `http://localhost:5000/api/swaps/${swapId}/contact`,
+        `${API_URL}/api/swaps/${swapId}/contact`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setContactInfo((prev) => ({ ...prev, [swapId]: response.data }));
@@ -663,11 +664,6 @@ function SwapRequests() {
           </p>
         )}
 
-        {/* UPDATED: the Incoming/Outgoing tabs (unchanged) now share a
-            row with the new status filter dropdown, using the same
-            "pills on the left, settings dropdown on the right"
-            layout established on MyListings.tsx -- flex-wrap lets the
-            dropdown drop to its own line on narrow screens. */}
         <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
           <div className="flex gap-2">
             <button
@@ -679,10 +675,6 @@ function SwapRequests() {
                   : "bg-transparent text-[#4a3620] border-[#c9a06c] hover:bg-[#f1e5cc]")
               }
             >
-              {/* UPDATED: count now reflects the active statusFilter,
-                  not just the raw incoming array length -- so switching
-                  to "Completed" shows how many of your INCOMING requests
-                  are completed, not the total regardless of filter. */}
               Incoming ({incoming.filter(matchesStatusFilter).length})
             </button>
             <button
@@ -694,19 +686,10 @@ function SwapRequests() {
                   : "bg-transparent text-[#4a3620] border-[#c9a06c] hover:bg-[#f1e5cc]")
               }
             >
-              {/* Same as Incoming above -- both counts always reflect
-                  the current status filter, even for the tab you're not
-                  currently viewing, so you can see at a glance whether
-                  the other tab has anything worth checking under this
-                  filter without switching to it. */}
               Outgoing ({outgoing.filter(matchesStatusFilter).length})
             </button>
           </div>
 
-          {/* NEW: status filter dropdown -- "Pending" groups all four
-              unfinished sub-statuses together (see StatusFilterOption's
-              comment), since the page already treats them as visually
-              identical everywhere else. */}
           <div className="flex items-center gap-2">
             <label htmlFor="statusFilter" className="text-sm text-[#7a6a58]">
               Status:
@@ -727,10 +710,6 @@ function SwapRequests() {
           </div>
         </div>
 
-        {/* UPDATED: was visibleSwaps.length === 0 checking the tab alone.
-            Now distinguishes "this tab genuinely has nothing" from "the
-            status filter matched nothing" -- otherwise a narrow filter
-            could look identical to having zero requests at all. */}
         {filteredSwaps.length === 0 && (
           <p className="text-center text-[#7a6a58]">
             {(activeTab === "incoming" ? incoming : outgoing).length === 0
@@ -745,10 +724,6 @@ function SwapRequests() {
           {visibleSwaps.map((swap) => renderSwapCard(swap, activeTab === "incoming"))}
         </div>
 
-        {/* NEW: Load More button, same pattern as Explore.tsx/MyListings.tsx --
-            only shown when there are more filtered results beyond
-            what's currently visible. No network request, just revealing
-            more of the already-fetched incoming/outgoing arrays. */}
         {visibleCount < filteredSwaps.length && (
           <div className="flex justify-center mt-6">
             <button
@@ -760,9 +735,6 @@ function SwapRequests() {
           </div>
         )}
 
-        {/* NEW: end-of-list message, shown once every filtered swap is
-            already visible -- same pattern as Explore.tsx/MyListings.tsx/
-            Suggested Matches. */}
         {visibleSwaps.length > 0 && visibleCount >= filteredSwaps.length && (
           <p className="text-center text-[#7a6a58] mt-6">
             That's all your requests for this view.

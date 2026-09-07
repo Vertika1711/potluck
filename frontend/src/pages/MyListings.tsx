@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../components/Navbar";
+import { API_URL } from "../config";
 
 interface Listing {
   _id: string;
@@ -97,8 +98,8 @@ function MyListings() {
         // not just yours -- so we fetch everything, then filter down
         // to only the ones where userId matches YOUR own profile id.
         const [listingsRes, profileRes] = await Promise.all([
-          axios.get("http://localhost:5000/api/listings"),
-          axios.get("http://localhost:5000/api/auth/me", {
+          axios.get(`${API_URL}/api/listings`),
+          axios.get(`${API_URL}/api/auth/me`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -233,7 +234,7 @@ function MyListings() {
   async function saveEdit(id: string) {
     try {
       const response = await axios.put(
-        `http://localhost:5000/api/listings/${id}`,
+        `${API_URL}/api/listings/${id}`,
         { title: editTitle, description: editDescription, skillTags: editSkillTags },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -252,7 +253,7 @@ function MyListings() {
     if (!confirmed) return;
 
     try {
-      await axios.delete(`http://localhost:5000/api/listings/${id}`, {
+      await axios.delete(`${API_URL}/api/listings/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -267,7 +268,7 @@ function MyListings() {
 
     try {
       const response = await axios.put(
-        `http://localhost:5000/api/listings/${listing._id}`,
+        `${API_URL}/api/listings/${listing._id}`,
         { status: newStatus },
         { headers: { Authorization: `Bearer ${token}` } }
       );

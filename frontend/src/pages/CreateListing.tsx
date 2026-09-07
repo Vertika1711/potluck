@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../components/Navbar";
+import { API_URL } from "../config";
 
 function CreateListing() {
   // One piece of state per form field — same pattern as Signup/Login
@@ -77,7 +78,7 @@ function CreateListing() {
 
     try {
       const response = await axios.post(
-        "http://localhost:5000/api/listings/suggest-tags",
+        `${API_URL}/api/listings/suggest-tags`,
         { text: description },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -106,7 +107,7 @@ function CreateListing() {
       // CHANGED: skillTags is already a clean array now, no need to
       // split/trim/filter a comma-separated string anymore.
       await axios.post(
-        "http://localhost:5000/api/listings",
+        `${API_URL}/api/listings`,
         { title, description, type, skillTags },
         {
           headers: { Authorization: `Bearer ${token}` },

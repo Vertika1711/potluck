@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../components/Navbar";
+import { API_URL } from "../config";
 
 // One flat, renderable card straight from the backend -- already
 // flattened to a single listing, with only the matched tags included.
@@ -38,7 +39,7 @@ function SuggestedMatches() {
     setError("");
 
     try {
-      const response = await axios.get(`http://localhost:5000/api/matches?offset=${fetchOffset}`, {
+      const response = await axios.get(`${API_URL}/api/matches?offset=${fetchOffset}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

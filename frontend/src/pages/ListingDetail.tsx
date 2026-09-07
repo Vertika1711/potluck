@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../components/Navbar";
+import { API_URL } from "../config";
 
 interface Listing {
   _id: string;
@@ -59,11 +60,11 @@ function ListingDetail() {
   useEffect(() => {
     async function fetchListing() {
       try {
-        const response = await axios.get(`http://localhost:5000/api/listings/${id}`);
+        const response = await axios.get(`${API_URL}/api/listings/${id}`);
         setListing(response.data);
 
         if (token) {
-          const profileRes = await axios.get("http://localhost:5000/api/auth/me", {
+          const profileRes = await axios.get(`${API_URL}/api/auth/me`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           setMyId(profileRes.data._id);
@@ -88,7 +89,7 @@ function ListingDetail() {
         if (listing!.type === "offer") {
           // CASE B: I need to see my OWN active offer listings, to pick
           // which ones to attach when requesting to learn this.
-          const res = await axios.get("http://localhost:5000/api/listings");
+          const res = await axios.get(`${API_URL}/api/listings`);
           const mine = res.data.filter(
             (l: MyListing) => l.userId === myId && l.type === "offer"
           );
@@ -97,7 +98,7 @@ function ListingDetail() {
           // CASE A: I need to know if the OWNER has anything to trade
           // back, so I can warn the sender (myself) before sending if not.
           const res = await axios.get(
-            `http://localhost:5000/api/users/${listing!.userId._id}/profile`
+            `${API_URL}/api/users/${listing!.userId._id}/profile`
           );
           const ownerOffers = (res.data.activeListings || []).filter(
             (l: MyListing) => l.type === "offer"
@@ -134,7 +135,7 @@ function ListingDetail() {
           ? { listingId: listing._id, offeredListingIds: selectedOfferIds }
           : { listingId: listing._id };
 
-      const response = await axios.post("http://localhost:5000/api/swaps", body, {
+      const response = await axios.post(`${API_URL}/api/swaps`, body, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

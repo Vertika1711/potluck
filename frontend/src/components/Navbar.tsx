@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useMyAvatar } from "../hooks/useMyAvatar";
+import { API_URL } from "../config";
 
 interface NavbarProps {
   // Optional: called when the wordmark is clicked, INSTEAD of navigating
@@ -46,7 +47,7 @@ function NotificationBell({ token, onNavigate }: { token: string; onNavigate?: (
 
   async function fetchNotifications() {
     try {
-      const response = await axios.get("http://localhost:5000/api/notifications", {
+      const response = await axios.get(`${API_URL}/api/notifications`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setNotifications(response.data.notifications);
@@ -94,7 +95,7 @@ function NotificationBell({ token, onNavigate }: { token: string; onNavigate?: (
     if (notification.type !== "expiry_reminder") {
       try {
         await axios.put(
-          `http://localhost:5000/api/notifications/${notification._id}/read`,
+          `${API_URL}/api/notifications/${notification._id}/read`,
           {},
           { headers: { Authorization: `Bearer ${token}` } }
         );
@@ -115,7 +116,7 @@ function NotificationBell({ token, onNavigate }: { token: string; onNavigate?: (
   async function handleMarkAllRead() {
     try {
       await axios.put(
-        "http://localhost:5000/api/notifications/read-all",
+        `${API_URL}/api/notifications/read-all`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );

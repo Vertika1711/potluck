@@ -3,8 +3,8 @@ import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../components/Navbar";
 import { AVATARS, getAvatarSrc } from "../utils/avatar";
+import { API_URL } from "../config";
 
-// Describes the shape of the user data we expect back from the backend
 interface User {
   _id: string;
   name: string;
@@ -17,8 +17,6 @@ interface User {
   avatarId?: number;
 }
 
-// NEW: shape of one rating left about me -- same shape PublicProfile.tsx
-// uses, just fetched for my own id instead of someone else's.
 interface Rating {
   _id: string;
   raterId: { _id: string; name: string } | null;
@@ -29,18 +27,12 @@ interface Rating {
 
 function Profile() {
   const [user, setUser] = useState<User | null>(null);
-  // NEW: my own most-recent review (a PREVIEW only, full list lives on
-  // /my-reviews now), and my completed-swap count for the Dashboard preview.
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [completedSwapCount, setCompletedSwapCount] = useState(0);
   const [joinedAt, setJoinedAt] = useState<string>("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  // NEW: same edit-mode pattern as MyListings.tsx -- a boolean toggle
-  // plus separate "edit..." state fields, kept apart from the main
-  // "user" state so typing in the form doesn't affect the displayed
-  // profile until Save is actually clicked.
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editSkillsOffered, setEditSkillsOffered] = useState<string[]>([]);
@@ -57,48 +49,33 @@ function Profile() {
 
   const token = localStorage.getItem("token");
 
-  // useEffect runs once when this page first loads —
-  // exactly when we want to fetch the user's data
   useEffect(() => {
     async function fetchProfile() {
-      // If there's no token at all, the user was never logged in —
-      // send them to the login page instead of showing a broken profile
       if (!token) {
         navigate("/login");
         return;
       }
 
       try {
-        const response = await axios.get("http://localhost:5000/api/auth/me", {
+        const response = await axios.get(`${API_URL}/api/auth/me`, {
           headers: {
-            // This is exactly the "Bearer <token>" format we tested in Postman
             Authorization: `Bearer ${token}`,
           },
         });
 
         setUser(response.data);
 
-        // NEW: switched from the old /api/users/:id/profile call to the
-        // new /api/users/me/stats route -- simpler (no id needed, since
-        // it derives "me" from the JWT), and it's the same route the
-        // full Dashboard page will use, so this preview and that full
-        // page always agree on the numbers.
-        const statsRes = await axios.get("http://localhost:5000/api/users/me/stats", {
+        const statsRes = await axios.get(`${API_URL}/api/users/me/stats`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setCompletedSwapCount(statsRes.data.completedCount);
         setJoinedAt(statsRes.data.joinedAt);
 
-        // NEW: my own MOST RECENT review only (limit=1) -- this is just
-        // a preview; the full list with pagination/filtering now lives
-        // on the dedicated /my-reviews page.
         const ratingsRes = await axios.get(
-          `http://localhost:5000/api/ratings/user/${response.data._id}?limit=1`
+          `${API_URL}/api/ratings/user/${response.data._id}?limit=1`
         );
         setRatings(ratingsRes.data.ratings);
       } catch (err) {
-        // If the token is invalid or expired, the backend returns 401 —
-        // in that case, clear the bad token and send the user to log in again
         localStorage.removeItem("token");
         setError("Session expired. Please log in again.");
         navigate("/login");
@@ -108,8 +85,6 @@ function Profile() {
     fetchProfile();
   }, [navigate, token]);
 
-  // NEW: opens edit mode, pre-filling the form with the user's
-  // current values -- same pattern as MyListings.tsx's startEditing.
   function startEditing() {
     if (!user) return;
     setIsEditing(true);
@@ -129,9 +104,6 @@ function Profile() {
     setIsEditing(false);
   }
 
-  // NEW: generic add/remove tag helpers, parameterized by which list
-  // to touch ("offered" or "wanted") -- avoids writing four nearly
-  // identical functions, since the logic is the same either way.
   function addTag(list: "offered" | "wanted") {
     const input = list === "offered" ? newOfferedInput : newWantedInput;
     const setList = list === "offered" ? setEditSkillsOffered : setEditSkillsWanted;
@@ -150,18 +122,15 @@ function Profile() {
     setList((prev) => prev.filter((t) => t !== tag));
   }
 
-  // NEW: saves the edited fields via PUT /api/users/me. This is a
-  // PARTIAL update on the backend, but we always send every field
-  // here anyway since the form always has all of them loaded.
   async function saveEdit() {
     try {
       const response = await axios.put(
-        "http://localhost:5000/api/users/me",
+        `${API_URL}/api/users/me`,
         {
           name: editName,
           skillsOffered: editSkillsOffered,
           skillsWanted: editSkillsWanted,
-          phone: editPhone || undefined, // empty string becomes "not set", not a literal blank phone
+          phone: editPhone || undefined,
           phoneVisible: editPhoneVisible,
           avatarId: editAvatarId,
         },
@@ -188,13 +157,11 @@ function Profile() {
     }
 
     try {
-      await axios.delete("http://localhost:5000/api/users/me", {
+      await axios.delete(`${API_URL}/api/users/me`, {
         headers: { Authorization: `Bearer ${token}` },
-        data: { password: deletePassword }, // DELETE requests send a body via "data", not a second argument like POST/PUT
+        data: { password: deletePassword },
       });
 
-      // Account is gone -- clear the token and send them off, same as
-      // a logout, but there's genuinely nothing to log back into now.
       localStorage.removeItem("token");
       navigate("/signup");
     } catch (err) {
@@ -206,8 +173,6 @@ function Profile() {
     }
   }
 
-  // UPDATED: renders a chip-editable skill list -- shared by both the
-  // offered and wanted sections in edit mode.
   function renderTagEditor(
     list: "offered" | "wanted",
     tags: string[],
@@ -261,7 +226,6 @@ function Profile() {
     );
   }
 
-  // Renders a plain (non-editable) skill list as small pill tags.
   function renderTagList(tags: string[]) {
     if (tags.length === 0) {
       return <p className="text-sm text-[#a99b82] italic">None yet</p>;
@@ -280,7 +244,6 @@ function Profile() {
     );
   }
 
-  // Renders the 18-avatar picker grid, used only in edit mode.
   function renderAvatarPicker() {
     return (
       <div className="grid grid-cols-6 gap-2 justify-items-center">
@@ -324,18 +287,7 @@ function Profile() {
     <div className="w-screen relative left-1/2 -ml-[50vw] min-h-screen bg-[#efe0c0] font-sans">
       <Navbar />
 
-      {/* UPDATED: the standalone "My Profile" page heading was removed --
-          the identity card below now opens directly with the avatar and
-          name, matching PublicProfile.tsx's structure (where the name
-          IS the page's heading, with no separate title above it). */}
       <div className="max-w-2xl mx-auto px-4 sm:px-8 py-8">
-        {/* UPDATED: identity card -- avatar and name now centered INSIDE
-            the card (PublicProfile's layout), tightly stacked, rather
-            than the previous left-aligned "avatar beside name" row.
-            Edit Profile is now an icon-only button, absolutely
-            positioned in the card's top-right corner. Padding/margin
-            tightened (p-5/mb-6 -> p-4/mb-4) since the card was reading
-            as oversized relative to its actual content. */}
         <div className="relative bg-white/60 backdrop-blur-sm rounded-lg p-4 mb-4">
           {!isEditing && (
             <button
@@ -352,7 +304,6 @@ function Profile() {
           )}
 
           {isEditing ? (
-            // EDIT MODE
             <div className="flex flex-col gap-4">
               <div className="flex flex-col items-center gap-2">
                 <label className="font-semibold text-[#4a3620]">Choose an Avatar</label>
@@ -387,9 +338,6 @@ function Profile() {
                 </label>
               </div>
 
-              {/* UPDATED: skills editors laid out as two side-by-side
-                  columns (matching how they're displayed in view mode
-                  below), instead of stacked full-width. */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block mb-1 font-semibold text-[#4a3620]">Skills Offered</label>
@@ -417,13 +365,7 @@ function Profile() {
               </div>
             </div>
           ) : (
-            // VIEW MODE
             <div className="flex flex-col gap-1">
-              {/* Avatar + name, centered, tightly stacked -- matches
-                  PublicProfile.tsx's structure. Avatar sized down from
-                  an earlier 32 to 24 with a thinner border, and the name
-                  pulled up with a small negative margin, so this whole
-                  block takes up meaningfully less vertical space. */}
               <div className="flex flex-col items-center gap-0">
                 <img
                   src={getAvatarSrc(user._id, user.avatarId)}
@@ -443,9 +385,6 @@ function Profile() {
                 </h1>
               </div>
 
-              {/* Email (left) / phone (right, only if set) -- bolded,
-                  smaller than before, "visible to swap partners" on its
-                  own line below the phone number. */}
               <div className="flex items-start justify-between flex-wrap gap-2 px-2 sm:px-4">
                 <span className="text-sm font-semibold" style={{ color: "#4a3620" }}>Email: {user.email}</span>
                 {user.phone && (
@@ -458,9 +397,6 @@ function Profile() {
                 )}
               </div>
 
-              {/* Skills Offered / Skills Wanted -- two distinct sub-cards
-                  (accent cream background, distinguishing them from the
-                  main translucent card), tightened padding/gap. */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
                 <div className="rounded-lg p-3" style={{ backgroundColor: "#f1e5cc" }}>
                   <p className="text-sm font-semibold text-[#4a3620] mb-1.5">Skills Offered</p>
@@ -475,10 +411,6 @@ function Profile() {
           )}
         </div>
 
-        {/* Dashboard preview -- a single, horizontally elongated
-            full-width card. Stat row matches PublicProfile.tsx's exact
-            layout (Trust Score / Completed Swaps / Joined), followed by
-            a short line of copy and a real "View Full Dashboard" button. */}
         <div className="bg-white/60 backdrop-blur-sm rounded-lg p-5 mb-6 text-center">
           <h3 className="font-semibold mb-3" style={{ color: "#4a7c59" }}>Your Potluck Insights</h3>
 
@@ -499,12 +431,6 @@ function Profile() {
             </div>
           </div>
 
-          {/* NEW: invitation line + button enclosed in the same
-              accent-box style used for the Trust Score explanation
-              above (thin colored left border, tinted background) --
-              visually groups this "go deeper" prompt as its own
-              distinct unit within the card, rather than floating as
-              plain text beneath the stats. */}
           <div
             className="pl-3 py-3 pr-3 rounded flex flex-col items-center gap-3"
             style={{ borderLeft: "4px solid #4a7c59", backgroundColor: "#e3ede3" }}
@@ -522,10 +448,6 @@ function Profile() {
           </div>
         </div>
 
-        {/* UPDATED: Reviews preview, restyled to match the Dashboard
-            card's structure -- heading, content, then a "go deeper"
-            callout box (same accent-box treatment) wrapping the link
-            through to the full page. */}
         <div className="bg-white/60 backdrop-blur-sm rounded-lg p-5 mb-6 text-center">
           <h3 className="font-semibold mb-3" style={{ color: "#4a7c59" }}>What People Say</h3>
 
@@ -560,8 +482,6 @@ function Profile() {
             </div>
           )}
 
-          {/* Same accent-box treatment as the Dashboard card's callout --
-              consistent "go deeper" pattern across both preview cards. */}
           <div
             className="pl-3 py-3 pr-3 rounded flex flex-col items-center gap-3"
             style={{ borderLeft: "4px solid #4a7c59", backgroundColor: "#e3ede3" }}
@@ -579,12 +499,6 @@ function Profile() {
           </div>
         </div>
 
-        {/* "Account" section -- combines Log Out and Delete Account into
-            one place, so this page is the one-stop location for
-            account-level actions. Navbar.tsx's Log Out stays as-is
-            (it's a shared, global convenience used by six other pages)
-            -- this doesn't replace that, it just gives Profile its own
-            complete, self-contained account-actions area. */}
         <div className="bg-white/60 backdrop-blur-sm rounded-lg p-5">
           <h3 className="font-semibold mb-3" style={{ color: "#4a7c59" }}>Account</h3>
 
@@ -601,9 +515,6 @@ function Profile() {
             </button>
           </div>
 
-          {/* Danger Zone -- restrained styling (cream background, thin
-              muted-red border), living inside the broader Account
-              section instead of standing alone. */}
           <div className="pt-4">
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div>

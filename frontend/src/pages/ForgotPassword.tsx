@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import { API_URL } from "../config";
 
 function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -15,7 +16,7 @@ function ForgotPassword() {
     setResetLink(null);
 
     try {
-      const response = await axios.post("http://localhost:5000/api/auth/forgot-password", { email });
+      const response = await axios.post(`${API_URL}/api/auth/forgot-password`, { email });
       setMessage(response.data.message);
       // DEV-ONLY -- resetLink only exists in the response because
       // there's no real email service wired up yet. In production this
@@ -134,7 +135,13 @@ function ForgotPassword() {
               sending yet -- see decisions-log.md #22 for why this is
               deliberate. Styled with a dashed border to visually mark it as
               a temporary dev-mode affordance, distinct from the success/
-              error boxes above, so it doesn't read as a permanent feature. */}
+              error boxes above, so it doesn't read as a permanent feature.
+              NOTE: this still hardcodes "http://localhost:5173" (the
+              FRONTEND's own dev port, not the backend) -- left as-is for
+              now since this entire dev-mode block is slated to be replaced
+              by real email sending later this same deployment phase
+              (decisions-log.md #22), so fixing it here would be wasted
+              effort on code about to be deleted. */}
           {resetLink && (
             <div className="mt-4 p-3 rounded border border-dashed border-[#8b5a2b] bg-[#f1e5cc]">
               <p className="text-sm text-[#4a3620] mb-1">

@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import Navbar from "../components/Navbar";
 import { getAvatarSrc } from "../utils/avatar";
+import { API_URL } from "../config";
 
 interface DashboardStats {
   name: string;
@@ -52,12 +53,12 @@ function Dashboard() {
       }
 
       try {
-        const statsRes = await axios.get("http://localhost:5000/api/users/me/stats", {
+        const statsRes = await axios.get(`${API_URL}/api/users/me/stats`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setStats(statsRes.data);
 
-        const meRes = await axios.get("http://localhost:5000/api/auth/me", {
+        const meRes = await axios.get(`${API_URL}/api/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setTrustScore(meRes.data.trustScore);

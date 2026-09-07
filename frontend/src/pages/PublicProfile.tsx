@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import { getAvatarSrc } from "../utils/avatar";
+import { API_URL } from "../config";
 
 interface PublicProfileData {
   name: string;
@@ -9,7 +10,7 @@ interface PublicProfileData {
   completedSwapCount: number;
   joinedAt: string;
   activeListings: Listing[];
-  avatarId?: number; // NEW -- see Profile.tsx's User interface for the same field
+  avatarId?: number;
 }
 
 interface Listing {
@@ -38,12 +39,10 @@ function PublicProfile() {
   const [sort, setSort] = useState<"recent" | "helpful">("recent");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [myId, setMyId] = useState<string | null>(null); // needed to check "have I voted"
+  const [myId, setMyId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // NEW: controls the mobile hamburger dropdown, same pattern as
-  // Navbar.tsx.
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const token = localStorage.getItem("token");
@@ -51,30 +50,26 @@ function PublicProfile() {
   useEffect(() => {
     async function loadEverything() {
       try {
-        // Step 1: find out who I am, IF logged in -- also doubles as
-        // the data we need later for "have I already voted helpful."
         if (token) {
-          const meRes = await axios.get("http://localhost:5000/api/auth/me", {
+          const meRes = await axios.get(`${API_URL}/api/auth/me`, {
             headers: { Authorization: `Bearer ${token}` },
           });
 
           if (meRes.data._id === userId) {
-            navigate("/profile"); // viewing my own public profile -- redirect
+            navigate("/profile");
             return;
           }
 
           setMyId(meRes.data._id);
         }
 
-        // Step 2: fetch the public profile itself
         const profileRes = await axios.get(
-          `http://localhost:5000/api/users/${userId}/profile`
+          `${API_URL}/api/users/${userId}/profile`
         );
         setProfile(profileRes.data);
 
-        // Step 3: fetch this user's ratings, respecting current sort and page
         const ratingsRes = await axios.get(
-          `http://localhost:5000/api/ratings/user/${userId}?sort=${sort}&page=${page}`
+          `${API_URL}/api/ratings/user/${userId}?sort=${sort}&page=${page}`
         );
         setRatings(ratingsRes.data.ratings);
         setTotalPages(ratingsRes.data.totalPages);
@@ -86,17 +81,12 @@ function PublicProfile() {
     }
 
     loadEverything();
-    // Re-runs if the sort toggle changes, so switching "Most Recent"
-    // <-> "Most Helpful" re-fetches with the new order.
   }, [userId, token, navigate, sort, page]);
 
-  // Toggles this rating's helpful vote, then updates just that one
-  // rating in state using the server's response -- same "update in
-  // place" pattern as SwapRequests.tsx's handleAction.
   async function toggleHelpful(ratingId: string) {
     try {
       const response = await axios.put(
-        `http://localhost:5000/api/ratings/${ratingId}/helpful`,
+        `${API_URL}/api/ratings/${ratingId}/helpful`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -112,11 +102,6 @@ function PublicProfile() {
     }
   }
 
-  // NEW: renders a read-only 5-star display for a given score --
-  // unlike SwapRequests.tsx's renderStarInput, this isn't clickable,
-  // since a review's score is fixed once submitted. Uses the app's
-  // gold accent color for filled stars, matching the interactive
-  // version's color choice for visual consistency.
   function renderStars(score: number) {
     return [1, 2, 3, 4, 5].map((n) => (
       <span key={n} className="text-lg" style={{ color: n <= score ? "#ffb400" : "#d9cdb8" }}>
@@ -125,23 +110,6 @@ function PublicProfile() {
     ));
   }
 
-  // NEW: shared header for this page -- deliberately NOT the full
-  // shared <Navbar />, since a visitor's own logged-in nav (My Listings,
-  // Suggested Matches, Swap Requests) isn't relevant while looking at
-  // SOMEONE ELSE'S profile -- this is a viewing page, not a page you
-  // act from. Same "simplified header" precedent as the four auth
-  // pages (decisions-log #32, #41), extended slightly further here to
-  // include Home/Explore, since a visitor otherwise had no way to
-  // navigate anywhere except their own account. Also handles the
-  // logged-out case, since this page is reachable without an account.
-  // Collapses to a hamburger below `lg`, matching Navbar.tsx's fixed
-  // breakpoint rule exactly -- Explore.tsx collapses at the same point
-  // even with just as few items, so matching that rule keeps this
-  // page's header feeling consistent with the rest of the app rather
-  // than deciding per-page whether wrapping "looks fine enough." Back
-  // was deliberately moved OUT of this header and placed as its own
-  // block button below (matching CreateListing.tsx/ListingDetail.tsx's
-  // pattern), since it's page-specific navigation, not app-wide nav.
   function renderHeader() {
     return (
       <header className="sticky top-0 z-50 bg-[#f7ecd8] border-b border-[#c9a06c] px-4 sm:px-8 py-4 flex justify-between items-center relative">
@@ -153,8 +121,6 @@ function PublicProfile() {
           Potluck
         </Link>
 
-        {/* Desktop nav -- hidden below `lg`, same breakpoint as
-            Navbar.tsx. */}
         <nav className="hidden lg:flex items-center gap-6 font-semibold">
           <Link to="/" className="text-[#4a3620] hover:text-[#8b5a2b]">
             Home
@@ -183,9 +149,6 @@ function PublicProfile() {
           )}
         </nav>
 
-        {/* Hamburger toggle -- same plain inline SVG (no icon library)
-            as Navbar.tsx, switching between the hamburger and X icon
-            based on mobileMenuOpen. */}
         <button
           className="lg:hidden text-[#4a3620]"
           onClick={() => setMobileMenuOpen((open) => !open)}
@@ -200,9 +163,6 @@ function PublicProfile() {
           </svg>
         </button>
 
-        {/* Mobile dropdown -- same links as the desktop nav, stacked
-            vertically, closing itself after any link is clicked (same
-            onNavigate pattern as Navbar.tsx). */}
         {mobileMenuOpen && (
           <nav className="lg:hidden absolute top-full left-0 w-full bg-[#f7ecd8] border-b border-[#c9a06c] flex flex-col items-center gap-4 py-6 font-semibold">
             <Link to="/" className="text-[#4a3620] hover:text-[#8b5a2b]" onClick={() => setMobileMenuOpen(false)}>
@@ -254,18 +214,13 @@ function PublicProfile() {
     );
   }
 
-  if (!profile) return null; // shouldn't happen, but keeps TypeScript happy below
+  if (!profile) return null;
 
   return (
     <div className="w-screen relative left-1/2 -ml-[50vw] min-h-screen bg-[#efe0c0] font-sans">
       {renderHeader()}
 
       <div className="max-w-2xl mx-auto px-4 sm:px-8 py-8">
-        {/* Same navigate(-1) back button pattern as ListingDetail.tsx/
-            CreateListing.tsx -- returns to whichever page the person
-            actually came from (Explore's People tab, a listing's
-            "Posted by" link, Suggested Matches), rather than a
-            hardcoded destination. */}
         <button
           onClick={() => navigate(-1)}
           className="block mb-3 px-4 py-2 font-semibold bg-[#8b5a2b] text-[#f7ecd8] rounded hover:bg-[#7a4a22]"
@@ -273,10 +228,6 @@ function PublicProfile() {
           ← Back
         </button>
 
-        {/* NEW: avatar shown above the name -- centered, matching this
-            page's centered heading layout (unlike Profile.tsx's
-            left-aligned identity card, which puts the avatar beside
-            the name instead). */}
         <div className="flex flex-col items-center gap-0 mb-4">
           <img
             src={getAvatarSrc(userId!, profile.avatarId)}
@@ -297,12 +248,6 @@ function PublicProfile() {
           </h1>
         </div>
 
-        {/* NEW: trust score / completed swaps / joined date as a small,
-            visually-distinct stat row -- same translucent card
-            treatment used throughout the app, just for a data summary
-            rather than a listing/match. Not restructured or renamed,
-            per the "visually restyled for now" decision -- just given
-            a real visual home instead of three plain <p> lines. */}
         <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 flex flex-wrap justify-center gap-6 mb-3 text-center">
           <div>
             <p className="text-xs uppercase tracking-wide text-[#7a6a58]">Trust Score</p>
@@ -320,14 +265,6 @@ function PublicProfile() {
           </div>
         </div>
 
-        {/* NEW: brief explanation of what Trust Score actually means --
-            same accent-box style as Home's About section / MyListings'
-            Active-Closed explanation, since a first-time visitor has no
-            way to infer this from the number alone. Plain text, not a
-            tooltip, per the reasoning already established for
-            ForgotPassword's dev-mode note and MyListings' status
-            explanation -- a tooltip needs a hover/tap a visitor has no
-            reason to attempt. */}
         <div
           className="pl-3 py-2 mb-8 rounded"
           style={{ borderLeft: "4px solid #8b5a2b", backgroundColor: "#f1e5cc" }}
@@ -345,11 +282,6 @@ function PublicProfile() {
           <p className="text-[#7a6a58] mb-8">No active listings.</p>
         )}
 
-        {/* NEW: compact single-line rows instead of full Explore-style
-            cards -- this is a secondary section on someone's profile,
-            not a primary browsing destination, so no description and
-            only a couple of tags are shown. A visitor wanting full
-            detail clicks through to the listing itself. */}
         <div className="flex flex-col gap-2 mb-8">
           {profile.activeListings.map((listing) => (
             <Link
@@ -389,9 +321,6 @@ function PublicProfile() {
           Reviews
         </h2>
 
-        {/* NEW: Most Recent / Most Helpful as pill buttons, matching the
-            filter pattern used on Explore/MyListings/SwapRequests,
-            instead of plain disabled/enabled buttons. */}
         <div className="flex gap-3 mb-4">
           <button
             onClick={() => { setSort("recent"); setPage(1); }}
@@ -421,8 +350,6 @@ function PublicProfile() {
 
         <div className="flex flex-col gap-3">
           {ratings.map((rating) => {
-            // Have I already voted this one helpful? Only relevant if
-            // I'm logged in at all (myId is null for logged-out visitors).
             const iVoted = myId !== null && rating.helpfulUserIds.includes(myId);
 
             return (
@@ -440,11 +367,6 @@ function PublicProfile() {
                   {new Date(rating.createdAt).toLocaleDateString()}
                 </p>
 
-                {/* Helpful voting only makes sense if logged in, and the
-                    backend already blocks voting on a review ABOUT yourself
-                    -- but we don't know client-side who ratedUserId is here
-                    without an extra check, so we just let the backend be
-                    the source of truth and surface its error if blocked. */}
                 {token && (
                   <button
                     onClick={() => toggleHelpful(rating._id)}
@@ -458,10 +380,6 @@ function PublicProfile() {
           })}
         </div>
 
-        {/* Restyled Prev/Next/"Page X of Y", same structure as before,
-            now matching the app's established button language --
-            solid brown when enabled, faded when disabled at either
-            boundary. */}
         {totalPages > 1 && (
           <div className="flex items-center justify-center gap-4 mt-6">
             <button

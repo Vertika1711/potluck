@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import axios from "axios";
 import Navbar from "../components/Navbar";
 import { getAvatarSrc } from "../utils/avatar";
+import { API_URL } from "../config";
 
 // Describes the shape of one listing coming back from the backend,
 // so TypeScript knows what fields we can safely use below.
@@ -82,7 +83,7 @@ function Explore() {
     const timeout = setTimeout(async () => {
       try {
         const response = await axios.get(
-          `http://localhost:5000/api/users/search?q=${encodeURIComponent(userQuery)}`
+          `${API_URL}/api/users/search?q=${encodeURIComponent(userQuery)}`
         );
         setUserResults(response.data);
         setUserSearchError("");
@@ -104,7 +105,7 @@ function Explore() {
       try {
         // No Authorization header needed here -- this route is public,
         // matching how we built GET /api/listings on the backend.
-        const response = await axios.get("http://localhost:5000/api/listings");
+        const response = await axios.get(`${API_URL}/api/listings`);
         setListings(response.data);
       } catch (err) {
         setError("Failed to load listings.");
